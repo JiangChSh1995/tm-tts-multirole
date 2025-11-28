@@ -94,10 +94,9 @@
     let ttsApiVersion = 'v4';
     let detectionMode = DEFAULT_DETECTION_MODE;
 
-    // === [新增] 模式与配置变量 ===
-    // 跨模块共享变量：ttsInferMode, commonInferParams, acgnParams
+    // ===模式与配置变量 ===
+    // 跨模块共享变量：ttsInferMode, commonInferParams, JchshParams
     let ttsInferMode = GM_getValue('ttsInferModeOnline', 'infer_single'); // 模式选择
-    let TTS_API_ENDPOINT_INFER_CLASSIC = ""; // ACGN 经典模式 API 端点
 
     // **公用推理参数 (用于覆盖 infer_single 中的固定值)**
     let commonInferParams = GM_getValue('commonInferParamsOnline', {
@@ -107,8 +106,8 @@
         repetition_penalty: 1.35
     });
 
-    // **ACGN 经典模式独有配置 (匹配 JSON 结构)**
-    let acgnParams = GM_getValue('acgnParamsOnline', {
+    // **合音模式独有配置 (匹配 JSON 结构)**
+    let JchshParams = GM_getValue('JchshParamsOnline', {
         version: "v4",
         gpt_model_name: "",
         sovits_model_name: "", // 此字段由参考音频决定，此处留空
@@ -127,9 +126,9 @@
         sample_steps: 16,
         if_sr: false
     });
-    let acgnGptModels = []; // ACGN 模式 GPT 模型列表
+    let JchshGptModels = []; // 合音模式 GPT 模型列表
 
-    // === [新增] 文件持久化逻辑和变量 ===
+    // ===文件持久化逻辑和变量 ===
     // 跨模块共享变量：savedVoiceFileName, savedVoiceFileBase64, voiceFile
     let savedVoiceFileName = GM_getValue('savedVoiceFileNameOnline', null);
     let savedVoiceFileBase64 = GM_getValue('savedVoiceFileBase64Online', null);
@@ -265,10 +264,10 @@
             TTS_BEARER_TOKEN = GM_getValue('ttsBearerTokenOnline', '');
             customAuthPrefix = GM_getValue('customAuthPrefixOnline', '');
 
-            // === [新增] ACGN 模式配置加载 ===
+            // ===合音模式配置加载 ===
             ttsInferMode = GM_getValue('ttsInferModeOnline', 'infer_single');
             commonInferParams = GM_getValue('commonInferParamsOnline', commonInferParams);
-            acgnParams = GM_getValue('acgnParamsOnline', acgnParams);
+            JchshParams = GM_getValue('JchshParamsOnline', JchshParams);
 
             // 超时配置读取
             TTS_FETCH_TIMEOUT = GM_getValue('ttsFetchTimeoutOnline', 120) * 1000;
@@ -326,10 +325,10 @@
             GM_setValue('ttsFetchTimeoutOnline', TTS_FETCH_TIMEOUT / 1000);
             GM_setValue('ttsGenerateTimeoutOnline', TTS_GENERATE_TIMEOUT / 1000);
             
-            // === [新增] ACGN 模式配置保存 ===
+            // ===合音模式配置保存 ===
             GM_setValue('ttsInferModeOnline', ttsInferMode);
             GM_setValue('commonInferParamsOnline', commonInferParams);
-            GM_setValue('acgnParamsOnline', acgnParams);
+            GM_setValue('JchshParamsOnline', JchshParams);
         }
     };
 
@@ -901,11 +900,11 @@
     
             // === 分支逻辑：根据模式构造请求 (读取共享变量: ttsInferMode) ===
             if (ttsInferMode === 'infer_classic') {
-                // 1. Classic 模式：使用 FormData (ACGN 兼容，支持文件上传)
+                // 1. Classic 模式：使用 FormData (合音兼容，支持文件上传)
                 requestUrl = TTS_API_ENDPOINT_INFER_CLASSIC;
                 const formData = new FormData();
                 
-                const p = acgnParams; // ACGN 独有参数对象 (读取共享变量)
+                const p = JchshParams; // 合音独有参数对象 (读取共享变量)
     
                 // 处理 refer_wav 文件 (读取共享变量: voiceFile)
                 if (voiceFile) {
@@ -926,7 +925,7 @@
                 formData.append('top_k', c.top_k);
                 formData.append('top_p', c.top_p);
                 
-                // ACGN 独有参数 (读取共享变量: acgnParams)
+                // 合音独有参数 (读取共享变量: JchshParams)
                 formData.append('version', p.version);
                 formData.append('gpt_model_name', p.gpt_model_name);
                 formData.append('sovits_model_name', p.sovits_model_name);
@@ -952,7 +951,7 @@
                 };
     
             } else {
-                // 2. Single 模式：使用 JSON (兼容原生逻辑，使用公用参数覆盖固定值)
+                // 2. Single 模式：使用 JSON (兼容基础逻辑，使用公用参数覆盖固定值)
                 requestUrl = TTS_API_ENDPOINT_INFER; 
                 
                 // 构建请求体
@@ -1495,10 +1494,10 @@
                     <h3><i class="icon">🚀</i> 模式选择</h3>
                     <div class="tts-setting-item">
                         <select id="infer-mode-select" class="tts-select" style="font-weight: bold;">
-                            <option value="infer_single">原生模式 (infer_single)</option>
-                            <option value="infer_classic">ACGN 经典模式 (infer_classic)</option>
+                            <option value="infer_single">基础模式 (infer_single)</option>
+                            <option value="infer_classic">合音模式 (infer_classic)</option>
                         </select>
-                        <p class="tts-setting-desc">原生模式使用简单配置；经典模式支持文件上传和高级参数调整。</p>
+                        <p class="tts-setting-desc">基础模式使用简单配置；合音模式支持文件上传和高级参数调整。</p>
                     </div>
                 </div>
                 
@@ -1545,7 +1544,7 @@
                     </button>
                 </div>
                 
-                <div id="acgn-config-container"></div>
+                <div id="Jchsh-config-container"></div>
 
                 <div class="tts-setting-item">
                     <label>识别模式</label>
@@ -1871,9 +1870,9 @@
             fetchTTSModels();
         });
         
-        // === [新增] 模式切换逻辑和公用参数绑定 ===
+        // ===模式切换逻辑和公用参数绑定 ===
         const inferModeSelect = document.getElementById('infer-mode-select');
-        const acgnContainer = document.getElementById('acgn-config-container');
+        const JchshContainer = document.getElementById('Jchsh-config-container');
         const globalSpeedInput = document.getElementById('global_speedFacter');
 
         // 1. 绑定公用推理参数 (commonInferParams)
@@ -2012,28 +2011,28 @@
             });
         }
 
-        // 3. 模式切换函数 (控制 ACGN UI 的显示和事件绑定)
-        function toggleACGNUI() {
-            acgnContainer.innerHTML = ''; 
+        // 3. 模式切换函数 (控制 合音UI 的显示和事件绑定)
+        function toggleJCHSHUI() {
+            JchshContainer.innerHTML = ''; 
             if (ttsInferMode === 'infer_classic') {
-                const acgnUI = createACGNConfigSection();
-                acgnContainer.appendChild(acgnUI);
+                const JchshUI = createJCHSHConfigSection();
+                JchshContainer.appendChild(JchshUI);
                 // 确保在 UI 插入 DOM 后立即绑定事件
-                bindACGNConfigEvents(acgnUI); 
+                bindJCHSHConfigEvents(JchshUI); 
             }
         }
 
         if (inferModeSelect) {
             // 初始化时设置选择框的值并显示对应的 UI
             inferModeSelect.value = ttsInferMode;
-            toggleACGNUI(); 
+            toggleJCHSHUI(); 
 
             inferModeSelect.addEventListener('change', (e) => {
                 // 修改共享变量 ttsInferMode
                 ttsInferMode = e.target.value;
                 Settings.save();
                 updateApiEndpoints(); // 刷新 API 地址 (如果将来有变化)
-                toggleACGNUI(); // 刷新界面
+                toggleJCHSHUI(); // 刷新界面
                 showNotification(`模式已切换为: ${ttsInferMode}`, 'success');
             });
         }
@@ -2812,9 +2811,9 @@
     }
     
     // 获取 GPT 模型列表 
-    function fetchACGNModelList() {
-        const btn = document.getElementById('acgn-fetch-models-btn');
-        const gptSelect = document.getElementById('acgn_param_gpt_model_name');
+    function fetchJCHSHModelList() {
+        const btn = document.getElementById('Jchsh-fetch-models-btn');
+        const gptSelect = document.getElementById('Jchsh_param_gpt_model_name');
         if(btn) { btn.disabled = true; btn.textContent = '获取中...'; }
         
         GM_xmlhttpRequest({
@@ -2827,22 +2826,22 @@
                     const data = JSON.parse(response.responseText);
                     let gptCount = 0;
                     
-                    // 修改共享变量：acgnGptModels, acgnParams
+                    // 修改共享变量：JchshGptModels, JchshParams
                     if (data.gpt && Array.isArray(data.gpt)) {
-                        acgnGptModels = data.gpt;
+                        JchshGptModels = data.gpt;
                         gptCount = data.gpt.length;
                         if (gptSelect) {
                             gptSelect.innerHTML = '<option value="">请选择 GPT 模型</option>';
-                            acgnGptModels.forEach(model => {
+                            JchshGptModels.forEach(model => {
                                 const option = document.createElement('option');
                                 option.value = model;
                                 option.textContent = model;
-                                if (model === acgnParams.gpt_model_name) option.selected = true;
+                                if (model === JchshParams.gpt_model_name) option.selected = true;
                                 gptSelect.appendChild(option);
                             });
                         }
                     } else {
-                        acgnGptModels = [];
+                        JchshGptModels = [];
                     }
                     
                     showNotification(`成功获取 GPT 模型: ${gptCount}个`, 'success');
@@ -2860,69 +2859,77 @@
         });
     }
     
-    // 生成 ACGN 配置界面
-    function createACGNConfigSection() {
-        const p = acgnParams;
+    // 生成 合音配置界面
+    function createJCHSHConfigSection() {
+        const p = JchshParams;
         const div = document.createElement('div');
         div.className = 'tts-setting-section';
         div.style.marginTop = '15px';
         div.innerHTML = `
-            <h3><i class="icon">🎛️</i> ACGN 经典模式独有参数 (v4)</h3>
+            <h3><i class="icon">🎛️</i> 合音模式独有参数 (只用上传音频、参考文本、参考语言跟选择模型，剩下的除非你知道在改什么！)</h3>
             
             <div style="margin-bottom: 10px; padding: 10px; background: #e7f3ff; border: 1px dashed #007bff; border-radius: 6px; text-align: center;">
-                <input type="file" id="acgn-voiceFileInput" accept="audio/*" style="display: none;">
-                <div id="acgn-upload-trigger" style="cursor: pointer;">
-                    <div style="font-size: 20px;">📂 <span id="acgn-file-label">点击上传参考音频 (必需)</span></div>
+                <input type="file" id="Jchsh-voiceFileInput" accept="audio/*" style="display: none;">
+                <div id="Jchsh-upload-trigger" style="cursor: pointer;">
+                    <div style="font-size: 20px;">📂 <span id="Jchsh-file-label">点击上传参考音频 (必需)</span></div>
                 </div>
-                <div id="acgn-file-info" style="display:none; margin-top:5px;">
-                    <span id="acgn-filename" style="font-weight:bold; color:#0056b3;"></span>
-                    <button id="acgn-file-remove" style="margin-left:10px; color:red; border:none; background:none; cursor:pointer;">[移除]</button>
+                <div id="Jchsh-file-info" style="display:none; margin-top:5px;">
+                    <span id="Jchsh-filename" style="font-weight:bold; color:#0056b3;"></span>
+                    <button id="Jchsh-file-remove" style="margin-left:10px; color:red; border:none; background:none; cursor:pointer;">[移除]</button>
                 </div>
             </div>
 
             <div class="tts-setting-item">
-                <label>GPT 模型 (gpt_model_name)</label>
+                <label>GPT 模型 </label>
                 <div style="display:flex; gap:5px;">
-                    <select id="acgn_param_gpt_model_name" class="tts-select" style="flex:1;">
+                    <select id="Jchsh_param_gpt_model_name" class="tts-select" style="flex:1;">
                         <option value="">${p.gpt_model_name ? p.gpt_model_name : '请点击刷新获取列表'}</option>
                     </select>
-                    <button id="acgn-fetch-models-btn" class="tts-test-btn" style="width:auto;">🔄 刷新</button>
+                    <button id="Jchsh-fetch-models-btn" class="tts-test-btn" style="width:auto;">🔄 刷新</button>
                 </div>
             </div>
             <div class="tts-setting-item">
                 <label>SoVITS 模型 (sovits_model_name)</label>
-                <input type="text" id="acgn_param_sovits_model_name" value="${p.sovits_model_name}" class="tts-input" placeholder="由参考音频决定，此处留空即可">
+                <input type="text" id="Jchsh_param_sovits_model_name" value="${p.sovits_model_name}" class="tts-input" placeholder="由参考音频决定，此处留空即可">
             </div>
 
             <div class="tts-settings-grid">
-                <div class="tts-setting-item"><label>提示文本 (Prompt)</label><input type="text" id="acgn_param_prompt_text" value="${p.prompt_text}" class="tts-input"></div>
-                <div class="tts-setting-item"><label>提示语言</label><input type="text" id="acgn_param_prompt_text_lang" value="${p.prompt_text_lang}" class="tts-input"></div>
+                <div class="tts-setting-item"><label>参考文本(就是上传音频说了什么话)</label><input type="text" id="Jchsh_param_prompt_text" value="${p.prompt_text}" class="tts-input"></div>
+                <div class="tts-setting-item"><label>参考文本语言(支持zh,en,ja,ko)</label><input type="text" id="Jchsh_param_prompt_text_lang" value="${p.prompt_text_lang}" class="tts-input"></div>
             </div>
 
-            <div class="tts-settings-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                <div class="tts-setting-item"><label>采样步数</label><input type="number" id="acgn_param_sample_steps" value="${p.sample_steps}" class="tts-input"></div>
-                <div class="tts-setting-item"><label>分段间隔</label><input type="number" id="acgn_param_fragment_interval" step="0.1" value="${p.fragment_interval}" class="tts-input"></div>
+            <div class="tts-settings-grid" style="display: grid; grid-template-columns: 1fr; gap: 20px; padding: 0 5px;">
+                <div class="tts-setting-item" style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 14px; color: #333; font-weight: 500;">采样步数</label>
+                    <input type="number" id="Jchsh_param_sample_steps" value="${p.sample_steps}" 
+                           class="tts-input" style="padding: 10px 12px; font-size: 15px; border-radius: 6px; border: 1px solid #ddd; width: 100%; box-sizing: border-box;">
+                </div>
+                <div class="tts-setting-item" style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 14px; color: #333; font-weight: 500;">分段间隔</label>
+                    <input type="number" id="Jchsh_param_fragment_interval" step="0.1" value="${p.fragment_interval}" 
+                           class="tts-input" style="padding: 10px 12px; font-size: 15px; border-radius: 6px; border: 1px solid #ddd; width: 100%; box-sizing: border-box;">
+                </div>
             </div>
 
             <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:15px;">
-                <label class="tts-switch-label"><input type="checkbox" id="acgn_param_split_bucket" ${p.split_bucket ? 'checked' : ''}><span class="tts-switch-slider"></span> 分桶 (Bucket)</label>
-                <label class="tts-switch-label"><input type="checkbox" id="acgn_param_parallel_infer" ${p.parallel_infer ? 'checked' : ''}><span class="tts-switch-slider"></span> 并行推理</label>
-                <label class="tts-switch-label"><input type="checkbox" id="acgn_param_if_sr" ${p.if_sr ? 'checked' : ''}><span class="tts-switch-slider"></span> 超分 (SR)</label>
+                <label class="tts-switch-label"><input type="checkbox" id="Jchsh_param_split_bucket" ${p.split_bucket ? 'checked' : ''}><span class="tts-switch-slider"></span> Bucket</label>
+                <label class="tts-switch-label"><input type="checkbox" id="Jchsh_param_parallel_infer" ${p.parallel_infer ? 'checked' : ''}><span class="tts-switch-slider"></span> 并行推理</label>
+                <label class="tts-switch-label"><input type="checkbox" id="Jchsh_param_if_sr" ${p.if_sr ? 'checked' : ''}><span class="tts-switch-slider"></span> 超分 (SR)</label>
             </div>
         `;
         return div;
     }
     
-    // 绑定 ACGN 界面事件 (包含文件持久化逻辑)
-    function bindACGNConfigEvents(container) {
+    // 绑定 合音界面事件 (包含文件持久化逻辑)
+    function bindJCHSHConfigEvents(container) {
         // 文件上传元素
-        const fileInput = container.querySelector('#acgn-voiceFileInput');
-        const trigger = container.querySelector('#acgn-upload-trigger');
-        const fileInfo = container.querySelector('#acgn-file-info');
-        const fileNameSpan = container.querySelector('#acgn-filename');
-        const removeBtn = container.querySelector('#acgn-file-remove');
-        const fetchBtn = container.querySelector('#acgn-fetch-models-btn');
-        const fileLabel = container.querySelector('#acgn-file-label');
+        const fileInput = container.querySelector('#Jchsh-voiceFileInput');
+        const trigger = container.querySelector('#Jchsh-upload-trigger');
+        const fileInfo = container.querySelector('#Jchsh-file-info');
+        const fileNameSpan = container.querySelector('#Jchsh-filename');
+        const removeBtn = container.querySelector('#Jchsh-file-remove');
+        const fetchBtn = container.querySelector('#Jchsh-fetch-models-btn');
+        const fileLabel = container.querySelector('#Jchsh-file-label');
 
 
         // 更新文件 UI 状态 (读取共享变量 voiceFile)
@@ -2985,16 +2992,16 @@
 
         // 绑定刷新模型按钮
         if(fetchBtn) {
-            fetchBtn.onclick = () => fetchACGNModelList();
-            if(acgnGptModels.length === 0 && !acgnParams.gpt_model_name) fetchACGNModelList(); 
+            fetchBtn.onclick = () => fetchJCHSHModelList();
+            if(JchshGptModels.length === 0 && !JchshParams.gpt_model_name) fetchJCHSHModelList(); 
         }
 
-        // 绑定所有输入框和选择框变化 (ACGN 参数)
+        // 绑定所有输入框和选择框变化 (合音参数)
         container.querySelectorAll('input, select').forEach(input => {
             input.addEventListener('change', (e) => {
-                if(!e.target.id.startsWith('acgn_param_')) return;
+                if(!e.target.id.startsWith('Jchsh_param_')) return;
                 
-                const key = e.target.id.replace('acgn_param_', '');
+                const key = e.target.id.replace('Jchsh_param_', '');
                 let value;
                 if (e.target.type === 'checkbox') {
                     value = e.target.checked;
@@ -3004,8 +3011,8 @@
                     value = e.target.value;
                 }
                 
-                // 修改共享变量 acgnParams
-                acgnParams[key] = value;
+                // 修改共享变量 JchshParams
+                JchshParams[key] = value;
                 Settings.save();
             });
         });
