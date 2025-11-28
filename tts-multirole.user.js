@@ -21,6 +21,9 @@
     let ttsApiBaseUrl = "http://127.0.0.1:8000"; // 默认地址
     let TTS_API_ENDPOINT_INFER = "";
     let TTS_API_ENDPOINT_MODELS = "";
+    let TTS_API_ENDPOINT_INFER_CLASSIC_MODELS = "";
+    let TTS_API_ENDPOINT_INFER_CLASSIC = "";
+    
 
     const DO_NOT_PLAY_VALUE = '_DO_NOT_PLAY_';
     const DEFAULT_DETECTION_MODE = 'character_and_dialogue';
@@ -1498,16 +1501,48 @@
                         <p class="tts-setting-desc">原生模式使用简单配置；经典模式支持文件上传和高级参数调整。</p>
                     </div>
                 </div>
-
-                <div class="tts-setting-section" style="border-left: 4px solid #ffc107; border-radius: 4px;">
-                    <h3><i class="icon">⚙️</i> 公用推理参数</h3>
-                    <div class="tts-settings-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <div class="tts-setting-item"><label>Top K</label><input type="number" id="common_top_k" value="${commonInferParams.top_k}" class="tts-input"></div>
-                        <div class="tts-setting-item"><label>Top P</label><input type="number" id="common_top_p" step="0.01" value="${commonInferParams.top_p}" class="tts-input"></div>
-                        <div class="tts-setting-item"><label>Temperature</label><input type="number" id="common_temperature" step="0.01" value="${commonInferParams.temperature}" class="tts-input"></div>
-                        <div class="tts-setting-item"><label>重复惩罚</label><input type="number" id="common_repetition_penalty" step="0.01" value="${commonInferParams.repetition_penalty}" class="tts-input"></div>
+                
+                <div class="tts-setting-section" style="border-left: 4px solid #ffc107; border-radius: 4px; padding: 15px; margin: 10px 0; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                    <h3 style="margin: 0 0 15px 0; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+                        <i class="icon">⚙️</i> 公用推理参数
+                    </h3>
+                    <!-- 网格布局适配移动端（小屏自动1列，大屏2列） -->
+                    <div class="tts-settings-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 15px;">
+                        <div class="tts-setting-item" style="display: flex; flex-direction: column; gap: 4px;">
+                            <label style="font-size: 14px; color: #666; font-weight: 500;">Top K</label>
+                            <input type="number" id="common_top_k" value="${commonInferParams.top_k || 50}" class="tts-input" 
+                                   style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 15px; outline: none; transition: border 0.2s;"
+                                   min="1" max="100" title="1-100，值越小生成越集中">
+                        </div>
+                        <div class="tts-setting-item" style="display: flex; flex-direction: column; gap: 4px;">
+                            <label style="font-size: 14px; color: #666; font-weight: 500;">Top P</label>
+                            <input type="number" id="common_top_p" step="0.01" value="${commonInferParams.top_p || 0.9}" class="tts-input"
+                                   style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 15px; outline: none; transition: border 0.2s;"
+                                   min="0.1" max="1.0" title="0.1-1.0，值越小生成越精准">
+                        </div>
+                        <div class="tts-setting-item" style="display: flex; flex-direction: column; gap: 4px;">
+                            <label style="font-size: 14px; color: #666; font-weight: 500;">Temperature</label>
+                            <input type="number" id="common_temperature" step="0.01" value="${commonInferParams.temperature || 0.7}" class="tts-input"
+                                   style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 15px; outline: none; transition: border 0.2s;"
+                                   min="0.1" max="2.0" title="0.1-2.0，值越大生成越随机">
+                        </div>
+                        <div class="tts-setting-item" style="display: flex; flex-direction: column; gap: 4px;">
+                            <label style="font-size: 14px; color: #666; font-weight: 500;">重复惩罚</label>
+                            <input type="number" id="common_repetition_penalty" step="0.01" value="${commonInferParams.repetition_penalty || 1.2}" class="tts-input"
+                                   style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 15px; outline: none; transition: border 0.2s;"
+                                   min="1.0" max="2.0" title="1.0-2.0，值越大重复越少">
+                        </div>
                     </div>
-                    <div class="tts-setting-item"><label>语速因子 (speedFacter)</label><input type="number" id="global_speedFacter" step="0.1" value="${speedFacter}" class="tts-input"></div>
+                    <div class="tts-setting-item" style="display: flex; flex-direction: column; gap: 4px;">
+                        <label style="font-size: 14px; color: #666; font-weight: 500;">语速因子 (speedFacter)</label>
+                        <input type="number" id="global_speedFacter" step="0.1" value="${speedFacter || 1.0}" class="tts-input"
+                               style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 15px; outline: none; transition: border 0.2s;"
+                               min="0.5" max="3.0" title="0.5-3.0，0.5倍慢，3.0倍快">
+                    </div>
+                    <!-- 移动端快捷重置按钮 -->
+                    <button id="reset-common-params" style="margin-top: 12px; padding: 8px 16px; background: #f3f4f6; border: none; border-radius: 6px; font-size: 14px; color: #333; cursor: pointer; touch-action: manipulation;">
+                        🔄 重置为默认值
+                    </button>
                 </div>
                 
                 <div id="acgn-config-container"></div>
@@ -1792,40 +1827,42 @@
 
         // 测试连接按钮
         document.getElementById('test-connection-btn').addEventListener('click', async () => {
-            const btn = document.getElementById('test-connection-btn');
-            const originalText = btn.textContent;
-            btn.textContent = '测试中...';
-            btn.disabled = true;
-
-            try {
-                // 先更新API地址
-                const urlInput = document.getElementById('api-base-url');
-                let newUrl = urlInput.value.trim();
-                if (newUrl.endsWith('/')) {
-                    newUrl = newUrl.slice(0, -1);
-                }
-                if (newUrl && !newUrl.match(/^https?:\/\/.+/)) {
-                    throw new Error('请输入有效的URL格式');
-                }
-
-                const tempApiBaseUrl = ttsApiBaseUrl;
-                ttsApiBaseUrl = newUrl || 'http://127.0.0.1:8000';
-                updateApiEndpoints();
-
-                // 测试连接
-                await testConnection();
-                showNotification('连接测试成功！', 'success');
-                Settings.save(); // 保存成功的配置
-            } catch (error) {
-                showNotification(`连接测试失败：${error.message}`, 'error');
-                // 恢复原来的API地址
-                ttsApiBaseUrl = tempApiBaseUrl;
-                updateApiEndpoints();
-            } finally {
-                btn.textContent = originalText;
-                btn.disabled = false;
+        const btn = document.getElementById('test-connection-btn');
+        const originalText = btn.textContent;
+        btn.textContent = '测试中...';
+        btn.disabled = true;
+    
+        // 在外面先保存当前配置，避免 try 内早期抛错后在 catch 中无法访问
+        const prevApiBaseUrl = ttsApiBaseUrl;
+    
+        try {
+            // 先更新API地址
+            const urlInput = document.getElementById('api-base-url');
+            let newUrl = urlInput.value.trim();
+            if (newUrl.endsWith('/')) {
+                newUrl = newUrl.slice(0, -1);
             }
-        });
+            if (newUrl && !newUrl.match(/^https?:\/\/.+/)) {
+                throw new Error('请输入有效的URL格式');
+            }
+    
+            ttsApiBaseUrl = newUrl || 'http://127.0.0.1:8000';
+            updateApiEndpoints();
+    
+            // 测试连接
+            await testConnection();
+            showNotification('连接测试成功！', 'success');
+            Settings.save(); // 保存成功的配置
+        } catch (error) {
+            showNotification(`连接测试失败：${error.message}`, 'error');
+            // 恢复原来的API地址
+            ttsApiBaseUrl = prevApiBaseUrl;
+            updateApiEndpoints();
+        } finally {
+            btn.textContent = originalText;
+            btn.disabled = false;
+        }
+    });
 
         // API版本
         document.getElementById('api-version').addEventListener('change', (e) => {
@@ -1840,13 +1877,130 @@
         const globalSpeedInput = document.getElementById('global_speedFacter');
 
         // 1. 绑定公用推理参数 (commonInferParams)
-        container.querySelectorAll('input[id^="common_"]').forEach(input => {
-            input.addEventListener('change', (e) => {
-                const key = e.target.id.replace('common_', '');
-                // 修改共享变量 commonInferParams
-                commonInferParams[key] = e.target.type === 'number' ? parseFloat(e.target.value) : e.target.value;
-                Settings.save();
+        document.addEventListener('DOMContentLoaded', () => {
+            // 精准定位配置容器（避免冲突）
+            const container = document.querySelector('.tts-setting-section:has(h3:contains("公用推理参数"))') || document.body;
+            if (!container) {
+                console.warn('TTS公用参数配置区未找到');
+                return;
+            }
+        
+            // 默认参数配置（用于重置）
+            const DEFAULT_PARAMS = {
+                top_k: 50,
+                top_p: 0.9,
+                temperature: 0.7,
+                repetition_penalty: 1.2,
+                speedFacter: 1.0
+            };
+        
+            // 1. 监听 common_ 开头参数变更（带合法性校验）
+            container.querySelectorAll('input[id^="common_"]').forEach(input => {
+                // 移动端兼容：input 事件实时响应（change 需失焦才触发，体验差）
+                input.addEventListener('input', (e) => {
+                    const key = e.target.id.replace('common_', '');
+                    let value = parseFloat(e.target.value);
+                    
+                    // 参数范围校验（避免无效值）
+                    if (e.target.min) value = Math.max(parseFloat(e.target.min), value);
+                    if (e.target.max) value = Math.min(parseFloat(e.target.max), value);
+                    // 空值/NaN 重置为默认值
+                    if (isNaN(value)) value = DEFAULT_PARAMS[key];
+        
+                    // 更新变量并保存
+                    commonInferParams[key] = value;
+                    e.target.value = value; // 同步输入框显示（避免超出范围）
+                    Settings.save();
+                });
+        
+                // 移动端触摸优化：聚焦时放大输入框（提升点击精度）
+                input.addEventListener('focus', () => {
+                    input.style.borderColor = '#ffc107';
+                    input.style.transform = 'scale(1.02)';
+                    input.style.boxShadow = '0 0 0 2px rgba(255,193,7,0.2)';
+                });
+                input.addEventListener('blur', () => {
+                    input.style.borderColor = '#e5e7eb';
+                    input.style.transform = 'scale(1)';
+                    input.style.boxShadow = 'none';
+                });
             });
+        
+            // 2. 监听语速因子变更
+            const speedInput = container.querySelector('#global_speedFacter');
+            if (speedInput) {
+                speedInput.addEventListener('input', (e) => {
+                    let value = parseFloat(e.target.value);
+                    // 范围校验
+                    value = Math.max(0.5, Math.min(3.0, value));
+                    if (isNaN(value)) value = DEFAULT_PARAMS.speedFacter;
+        
+                    speedFacter = value;
+                    e.target.value = value;
+                    Settings.save();
+                });
+        
+                // 同上面的触摸优化
+                speedInput.addEventListener('focus', () => {
+                    speedInput.style.borderColor = '#ffc107';
+                    speedInput.style.transform = 'scale(1.02)';
+                    speedInput.style.boxShadow = '0 0 0 2px rgba(255,193,7,0.2)';
+                });
+                speedInput.addEventListener('blur', () => {
+                    speedInput.style.borderColor = '#e5e7eb';
+                    speedInput.style.transform = 'scale(1)';
+                    speedInput.style.boxShadow = 'none';
+                });
+            }
+        
+            // 3. 重置按钮功能（移动端快捷操作）
+            const resetBtn = container.querySelector('#reset-common-params');
+            if (resetBtn) {
+                resetBtn.addEventListener('click', () => {
+                    // 重置 common 参数
+                    Object.keys(DEFAULT_PARAMS).forEach(key => {
+                        if (key !== 'speedFacter') {
+                            const input = container.querySelector(`#common_${key}`);
+                            if (input) input.value = DEFAULT_PARAMS[key];
+                            commonInferParams[key] = DEFAULT_PARAMS[key];
+                        }
+                    });
+                    // 重置语速因子
+                    if (speedInput) speedInput.value = DEFAULT_PARAMS.speedFacter;
+                    speedFacter = DEFAULT_PARAMS.speedFacter;
+        
+                    Settings.save();
+                    // 移动端反馈（Toast 提示）
+                    showToast('已重置为默认参数');
+                });
+        
+                // 按钮触摸反馈
+                resetBtn.addEventListener('touchstart', () => {
+                    resetBtn.style.background = '#e5e7eb';
+                });
+                resetBtn.addEventListener('touchend', () => {
+                    resetBtn.style.background = '#f3f4f6';
+                });
+            }
+        
+            // 辅助：移动端 Toast 提示函数（避免弹窗遮挡）
+            function showToast(message) {
+                let toast = document.querySelector('.tts-toast');
+                if (!toast) {
+                    toast = document.createElement('div');
+                    toast.className = 'tts-toast';
+                    toast.style.cssText = `
+                        position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+                        padding: 8px 16px; background: rgba(0,0,0,0.7); color: #fff;
+                        border-radius: 20px; font-size: 14px; z-index: 9999;
+                        transition: opacity 0.3s;
+                    `;
+                    document.body.appendChild(toast);
+                }
+                toast.textContent = message;
+                toast.style.opacity = '1';
+                setTimeout(() => toast.style.opacity = '0', 1500);
+            }
         });
 
         // 2. 绑定原脚本全局变量 speedFacter
