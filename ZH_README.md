@@ -1,6 +1,6 @@
 # 多角色TTS播放器 (正式版 1.0)
 
-[🇺🇸 English Documentation](./EN_README.md)
+[🇺🇸 English Documentation](./README.md)
 
 一个功能强大的网页端 TTS（文本转语音）Tampermonkey 油猴脚本。它专为网页小说、GALGAME 网页版及在线对话场景设计，集成了 GAL 流式引擎，支持多角色自动识别、情感标签提取以及自定义 TTS 后端对接。
 
