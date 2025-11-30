@@ -1,6 +1,6 @@
 # Multi-Role TTS Player (Official Ver 1.0)
 
-[🇨🇳 中文说明 (Chinese Documentation)](./README_CN.md)
+[🇨🇳 中文说明 (Chinese Documentation)](./README.md)
 
 A powerful Tampermonkey script for Web TTS (Text-to-Speech). Designed specifically for web novels, web-based GALGAMEs, and online dialogue scenarios, it integrates a GAL streaming engine, supports multi-character automatic recognition, emotion tag extraction, and custom TTS backend connections.
 
