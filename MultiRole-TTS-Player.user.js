@@ -480,7 +480,11 @@
                     let errorText = "Client Error";
                     try { errorText = response.responseText || await response.response.text(); } catch (e) {}
                     addLog('err', `API请求拒绝 (Status: ${response.status})`, { response: errorText });
-                    throw new Error("FATAL_CLIENT_ERROR");
+                    
+                    if (response.status >= 400 && response.status < 501) {
+                        throw new Error("FATAL_CLIENT_ERROR"); 
+                    }
+                    throw new Error(`SERVER_ERROR_${response.status}`);
                 }
 
                 let audioUrl;
@@ -499,6 +503,8 @@
                          if (response.response instanceof Blob) {
                              audioUrl = URL.createObjectURL(response.response);
                          } else {
+                         console.error("DEBUG: 服务器响应文本", response.responseText);
+                             addLog('err', '服务器返回非JSON内容', { responseText: response.responseText, error: jsonErr.message });
                              throw new Error("FATAL_JSON_ERROR");
                          }
                     }
@@ -508,13 +514,13 @@
                 return { url: audioUrl, task: taskOriginal };
 
             } catch (error) {
-                const fatalErrors = ["FATAL_CLIENT_ERROR", "FATAL_JSON_ERROR", "ABORT_BY_USER"];
-                if (fatalErrors.includes(error.message) || attempt === maxRetries) {
-                    console.error(`[TTS] 终止请求: ${error.message}`);
-                    throw error;
-                }
-                addLog('net', `请求异常: ${error.message}。10秒后重试...`);
-                await new Promise(resolve => setTimeout(resolve, retryInterval));
+            const fatalErrors = ["FATAL_CLIENT_ERROR", "FATAL_JSON_ERROR", "ABORT_BY_USER"];
+            if (fatalErrors.includes(error.message) || attempt === maxRetries) {
+                console.error(`[TTS] 终止请求: ${error.message}`);
+                throw error;
+            }
+            addLog('net', `请求异常: ${error.message}。10秒后重试...`);
+            await new Promise(resolve => setTimeout(resolve, retryInterval));
             }
         }
     }
@@ -1696,13 +1702,18 @@
             updatePlayBtnState();
             return;
         }
-
+    
         const tasks = parsePageText();
         if (!tasks || tasks.length === 0) {
             showNotification('未检测到对话内容', 'warning');
             return;
         }
-
+ 
+        if (currentAudio || generationQueue.length > 0 || playbackQueue.length > 0) {
+             addLog('sys', '播放启动前，检测到残留状态，执行安全清理');
+             handleStopClick(); 
+        }
+    
         handleStopClick();
         isPlaying = true;
         isPaused = false;
