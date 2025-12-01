@@ -293,6 +293,9 @@
                     else if (current[key] === '{{audio_base64}}') {
                         current[key] = replacements.audioBase64 || "";
                     }
+                    else if (current[key] === '{{emotion}}') {
+                        current[key] = replacements.emotion || ""; 
+                    }
                 }
             }
         }
@@ -320,6 +323,7 @@
 
         const replacementData = {
             text: task.dialogue,
+            emotion: task.emotion || "", 
             audioBase64: savedRefAudioBase64 || ""
         };
         // ---------------- LANG 逻辑分支 ----------------
