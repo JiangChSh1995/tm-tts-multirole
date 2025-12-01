@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         多角色TTS播放器 (OpenAI/GPT-SoVITS增强版)
+// @name         多角色TTS播放器
 // @namespace    http://tampermonkey.net/
-// @version      1.2
-// @description  网页通用TTS播放器，集成GAL游戏流式语音引擎，支持多角色与情绪自动识别、自定义API连接（OpenAI/GPT-SoVITS双模式）、自动播放及移动端UI适配。
+// @version      1.3
+// @description  网页通用TTS播放器，集成GAL游戏流式语音引擎，支持多角色与情绪自动识别、自定义API连接（OpenAI/GPT-SoVITS双模式）、自动播放及移动端UI适配，支持Json自定义模式。
 // @author       JChSh (Modified)
 // @match        *://*/*
 // @connect      *
@@ -243,50 +243,121 @@
     }
 
     // 模块：音频生成核心逻辑
-    async function generateAudio(task) {
-        const lang = detectLanguage(task.dialogue);
-        let requestPayload = {};
+    function parseCustomInput(rawInput) {
+        const firstBraceIndex = rawInput.indexOf('{');
         
-        try {
-            requestPayload = JSON.parse(customDataJson);
-        } catch (e) {
-            throw new Error("JSON 配置格式错误");
+        if (firstBraceIndex === -1) {
+            try {
+                return { 
+                    config: {}, 
+                    jsonObj: JSON.parse(rawInput), 
+                    isCustomLang: false 
+                };
+            } catch (e) {
+                return { config: {}, jsonObj: {}, isCustomLang: false, error: e };
+            }
         }
 
-        if (!requestPayload.api_type || requestPayload.api_type.trim() === "") {
+        const headerStr = rawInput.substring(0, firstBraceIndex);
+        const jsonStr = rawInput.substring(firstBraceIndex);
+
+        let apiType = null;
+        const apiTypeMatch = headerStr.match(/["']?api_type["']?\s*[:=]\s*["']([^"']+)["']/);
+        if (apiTypeMatch) apiType = apiTypeMatch[1];
+        const hasLang = /\blang\b/.test(headerStr);
+
+        try {
+            return {
+                config: { api_type: apiType },
+                jsonObj: JSON.parse(jsonStr),
+                isCustomLang: hasLang
+            };
+        } catch (e) {
+            return { config: {}, jsonObj: {}, isCustomLang: hasLang, error: e };
+        }
+    }
+
+    function processTemplateValues(obj, replacements) {
+        let hasReplacedText = false;
+
+        function traverse(current) {
+            for (const key in current) {
+                if (typeof current[key] === 'object' && current[key] !== null) {
+                    traverse(current[key]);
+                } else if (typeof current[key] === 'string') {
+                    if (current[key] === '{{text}}') {
+                        current[key] = replacements.text;
+                        hasReplacedText = true;
+                    }
+                 
+                    else if (current[key] === '{{audio_base64}}') {
+                        current[key] = replacements.audioBase64 || "";
+                    }
+                }
+            }
+        }
+
+        const newObj = JSON.parse(JSON.stringify(obj));
+        traverse(newObj);
+        return { newObj, hasReplacedText };
+    }
+
+    async function generateAudio(task) {
+        const lang = detectLanguage(task.dialogue);
+        
+        const parseResult = parseCustomInput(customDataJson);
+        if (parseResult.error) throw new Error("JSON 格式错误: " + parseResult.error.message);
+
+        let requestPayload = parseResult.jsonObj;
+        const isCustomLangMode = parseResult.isCustomLang;
+        
+        let apiType = (parseResult.config.api_type || requestPayload.api_type || "").trim().toLowerCase();
+
+        if (!apiType) {
             showNotification('JSON 配置缺少 api_type', 'error');
             throw new Error("FATAL: Missing api_type in configuration");
         }
 
-        const apiType = requestPayload.api_type.toLowerCase();
+        const replacementData = {
+            text: task.dialogue,
+            audioBase64: savedRefAudioBase64 || ""
+        };
+        // ---------------- LANG 逻辑分支 ----------------
+        if (isCustomLangMode) {
+            const { newObj, hasReplacedText } = processTemplateValues(requestPayload, replacementData);
+            requestPayload = newObj;
+
+            if (!hasReplacedText) {
+                throw new Error("自定义 Lang 模式错误：JSON 中缺少 {{text}} 占位符");
+            }
+        }
 
         // ---------------- OPENAI 逻辑分支 ----------------
         if (apiType === "openai") {
-            let promptInstruction = "";
-            if (task.emotion) promptInstruction += `[情绪: ${task.emotion}] `;
-            if (task.character) promptInstruction += `[角色: ${task.character}] `;
-            requestPayload.input = `${promptInstruction}<|endofprompt|>${task.dialogue}`;
+            if (!isCustomLangMode) {
+                let promptInstruction = "";
+                if (task.emotion) promptInstruction += `[情绪: ${task.emotion}] `;
+                if (task.character) promptInstruction += `[角色: ${task.character}] `;
+                requestPayload.input = `${promptInstruction}<|endofprompt|>${task.dialogue}`;
+                delete requestPayload.text;
+                delete requestPayload.text_lang;
+                delete requestPayload.api_type; 
+                delete requestPayload.prompt_text;
+                delete requestPayload.refer_wav;
 
-            delete requestPayload.text;
-            delete requestPayload.text_lang;
-            delete requestPayload.api_type; 
-            delete requestPayload.prompt_text;
-            delete requestPayload.refer_wav;
-
-            if (requestPayload.references && Array.isArray(requestPayload.references)) {
-                requestPayload.references.forEach(ref => {
-                    if (ref.audio === "savedRefAudioBase64") {
-                        if (savedRefAudioBase64) {
-                            ref.audio = savedRefAudioBase64;
-                            addLog('sys', 'OpenAI: 已注入参考音频 Base64');
-                        } else {
-                            addLog('warn', 'OpenAI: 配置引用了 Base64 但未上传音频');
+                // 处理引用音频
+                if (requestPayload.references && Array.isArray(requestPayload.references)) {
+                    requestPayload.references.forEach(ref => {
+                        if (ref.audio === "savedRefAudioBase64") {
+                            ref.audio = savedRefAudioBase64 || "";
                         }
-                    }
-                    if (ref.text === "promptText") {
-                        ref.text = promptText || "";
-                    }
-                });
+                        if (ref.text === "promptText") {
+                            ref.text = promptText || "";
+                        }
+                    });
+                }
+            } else {
+                delete requestPayload.api_type;
             }
 
             const headers = { "Content-Type": "application/json" };
@@ -299,15 +370,16 @@
         
         // ---------------- GPT-SoVITS 逻辑分支 ----------------
         else if (apiType === "gpt-sovits") {
-            delete requestPayload.api_type;
-            
-            if (task.character && characterVoices[task.character] && characterVoices[task.character].speed) {
-                requestPayload.speed_facter = characterVoices[task.character].speed;
+            if (!isCustomLangMode) {
+                if (task.character && characterVoices[task.character] && characterVoices[task.character].speed) {
+                    requestPayload.speed_facter = characterVoices[task.character].speed;
+                }
+                if (task.emotion && task.emotion.trim() !== '') {
+                    requestPayload.emotion = task.emotion.trim();
+                }
             }
 
-            if (task.emotion && task.emotion.trim() !== '') {
-                requestPayload.emotion = task.emotion.trim();
-            }
+            delete requestPayload.api_type;
 
             let headers = {};
             if (authToken && authToken.trim() !== "") {
@@ -318,6 +390,7 @@
 
             let finalData;
 
+            // 处理合音/文件上传模式
             if (mergeAudioEnabled) {
                 if (!refAudioFile || !(refAudioFile instanceof File)) {
                     if (savedRefAudioBase64) refAudioFile = b64toFile(savedRefAudioBase64, refAudioPath);
@@ -326,20 +399,37 @@
                         throw new Error("参考音频文件无效");
                     }
                 }
+
                 finalData = new FormData();
-                finalData.append('text', task.dialogue);
-                finalData.append('text_lang', lang);
-                finalData.append('refer_wav', refAudioFile);
-                finalData.append('prompt_text', promptText);
-                finalData.append('prompt_text_lang', detectLanguage(promptText));
-                
-                for (const [key, value] of Object.entries(requestPayload)) {
-                    finalData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
+
+                if (isCustomLangMode) {
+                    for (const [key, value] of Object.entries(requestPayload)) {
+                        if (value === '{{audio_file}}') {
+                            finalData.append(key, refAudioFile);
+                        } else {
+                            finalData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
+                        }
+                    }
+                } else {
+                    finalData.append('text', task.dialogue);
+                    finalData.append('text_lang', lang);
+                    finalData.append('refer_wav', refAudioFile);
+                    finalData.append('prompt_text', promptText);
+                    finalData.append('prompt_text_lang', detectLanguage(promptText));
+                    
+                    for (const [key, value] of Object.entries(requestPayload)) {
+                        finalData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
+                    }
                 }
+
             } else {
-                requestPayload.text = task.dialogue;
-                requestPayload.text_lang = lang;
-                finalData = JSON.stringify(requestPayload);
+                if (isCustomLangMode) {
+                    finalData = JSON.stringify(requestPayload);
+                } else {
+                    requestPayload.text = task.dialogue;
+                    requestPayload.text_lang = lang;
+                    finalData = JSON.stringify(requestPayload);
+                }
                 headers["Content-Type"] = "application/json";
             }
 
