@@ -1,4 +1,4 @@
-# 📖 Web TTS (GAL Engine Edition) v1.2 User Guide
+# 📖 Web TTS (GAL Engine Edition)  User Guide
 
 [🇨🇳 中文说明 (Chinese Documentation)](./ZH_README.md)
 
