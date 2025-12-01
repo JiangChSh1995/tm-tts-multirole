@@ -1,4 +1,4 @@
-# 📖 网页端 TTS (GAL 引擎版) v1.2 使用指南
+# 📖 网页端 TTS (GAL 引擎版) 使用指南
 
 [🇺🇸 English Documentation](./README.md)
 
