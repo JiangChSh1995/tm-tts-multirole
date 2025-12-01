@@ -8,6 +8,80 @@
 
 ---
 
+# 🛠️ TTS播放器 更新日志 (v1.3)
+
+本次更新引入了 **Lang 自定义模式**，允许用户完全接管 API 请求体的结构，不再受限于脚本预设的字段名称。
+
+## ✨ 新特性：Lang 自定义模式
+
+在 JSON 配置框的**花括号 `{` 外部**输入 `lang` 关键字即可激活此模式。
+
+### 1. 模式对比
+
+| 功能 | 默认模式 (Default) | Lang 自定义模式 (Custom) |
+| :--- | :--- | :--- |
+| **字段名控制** | 脚本锁定核心字段名 (如 `text`, `input`) | **完全自定义** (用户决定所有 Key) |
+| **文本注入** | 自动注入到预设字段 | 需使用 `{{text}}` 手动指定位置 |
+| **参数清理** | 自动清理 `api_type` 等脚本参数 | 仅清理 `api_type`，保留用户所有参数 |
+| **灵活性** | 低 (适合标准 API) | 高 (适合非标/改版 API) |
+
+### 2. 核心参数锁定情况说明
+
+#### 🔒 非自定义模式 (默认) - 参数锁死列表
+在此模式下，脚本会强制覆盖或注入以下参数，用户无法修改其 Key 名称：
+
+* **OpenAI 模式 (`api_type: "openai"`)**:
+    * `input`: **锁死**。强制格式为 `[情绪] [角色] <|endofprompt|> 对话文本`。
+    * `model`: 允许自定义值，但脚本会自动注入。
+    * (自动删除): `text`, `text_lang`, `prompt_text`, `refer_wav` 等会被脚本移除。
+
+* **GPT-SoVITS 模式 (`api_type: "gpt-sovits"`)**:
+    * `text`: **锁死**。对应对话文本。
+    * `text_lang`: **锁死**。对应自动检测的语言代码。
+    * `speed_facter`: **半锁死**。会被角色配置覆盖。
+    * `emotion`: **半锁死**。会被识别到的情绪覆盖。
+    * *(合音开启时)* `refer_wav`, `prompt_text`, `prompt_text_lang`: **锁死**。
+
+#### 🔓 Lang 自定义模式 - 占位符说明
+在此模式下，**没有参数名是锁死的**。你需要使用以下**占位符**来告诉脚本数据填在哪里：
+
+| 占位符 | 适用模式 | 描述 |
+| :--- | :--- | :--- |
+| **`{{text}}`** | 所有 | **必须包含**。会被替换为当前要朗读的文本。 |
+| **`{{audio_file}}`** | SoVITS (合音开启) | 会被替换为上传的参考音频文件 (Binary/Blob)。 |
+| **`{{audio_base64}}`** | OpenAI / JSON | 会被替换为上传音频的 Base64 字符串。 |
+
+---
+
+### 📝 配置示例
+
+#### 示例 1: 改版 GPT-SoVITS (字段名完全不同)
+假设后端 API 不用 `text` 而是用 `message`，不用 `refer_wav` 而是用 `ref_audio_bin`。
+
+**输入框内容：**
+```json
+"api_type": "gpt-sovits"
+lang
+{
+  "message": "{{text}}",           
+  "language": "zh",                
+  "ref_audio_bin": "{{audio_file}}", 
+  "speaker_id": 123
+}
+```
+#### 示例 2: OpenAI 格式 (需要 Base64 音频)
+**输入框内容：**
+```json
+"api_type": "openai"
+lang
+{
+  "the_text_input": "{{text}}",
+  "ref_audio_str": "{{audio_base64}}", 
+  "response_format": "mp3"
+}
+```
+---
+
 ## ✨ 核心功能 (v1.2 Update)
 
 * **🎭 多角色与情感识别**：自动解析网页文本中的【角色名】与〈情绪标签〉。
