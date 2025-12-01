@@ -12,8 +12,8 @@
 // @grant        GM_addStyle
 // @grant        GM_info
 // @license      All Rights Reserved
-// @updateURL    https://raw.githubusercontent.com/JiangChSh1995/tm-tts-multirole/refs/heads/main/%E5%A4%9A%E8%A7%92%E8%89%B2TTS%E6%92%AD%E6%94%BE%E5%99%A8%E6%AD%A3%E5%BC%8F%E7%89%881.1.user.js
-// @downloadURL  https://raw.githubusercontent.com/JiangChSh1995/tm-tts-multirole/refs/heads/main/%E5%A4%9A%E8%A7%92%E8%89%B2TTS%E6%92%AD%E6%94%BE%E5%99%A8%E6%AD%A3%E5%BC%8F%E7%89%881.1.user.js
+// @updateURL    https://raw.githubusercontent.com/JiangChSh1995/tm-tts-multirole/refs/heads/main/MultiRole-TTS-Player.user.js
+// @downloadURL  https://raw.githubusercontent.com/JiangChSh1995/tm-tts-multirole/refs/heads/main/MultiRole-TTS-Player.user.js
 // ==/UserScript==
 
 /*
