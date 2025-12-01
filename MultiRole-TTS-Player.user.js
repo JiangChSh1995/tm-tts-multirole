@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         多角色TTS播放器
+// @name         多角色TTS播放器 (OpenAI/GPT-SoVITS增强版)
 // @namespace    http://tampermonkey.net/
-// @version      1.1
-// @description  网页通用TTS播放器，集成GAL游戏流式语音引擎，支持多角色与情绪自动识别、自定义API连接、自动播放及移动端UI适配。(v1.1 双端UI修复)（GAL模式与多角色情感思路致谢：类脑社区 cnfh1746_06138 & kikukiku0662）
-// @author       JChSh (Bilibili UID: 511242)
+// @version      1.2
+// @description  网页通用TTS播放器，集成GAL游戏流式语音引擎，支持多角色与情绪自动识别、自定义API连接（OpenAI/GPT-SoVITS双模式）、自动播放及移动端UI适配。
+// @author       JChSh (Modified)
 // @match        *://*/*
 // @connect      *
 // @grant        GM_xmlhttpRequest
@@ -12,8 +12,7 @@
 // @grant        GM_addStyle
 // @grant        GM_info
 // @license      All Rights Reserved
-// @updateURL    https://raw.githubusercontent.com/JiangChSh1995/tm-tts-multirole/refs/heads/main/MultiRole-TTS-Player.user.js
-// @downloadURL  https://raw.githubusercontent.com/JiangChSh1995/tm-tts-multirole/refs/heads/main/MultiRole-TTS-Player.user.js
+// @run-at       document-end
 // ==/UserScript==
 
 /*
@@ -55,6 +54,7 @@
  * =============================
  */
 
+
 (function() {
     'use strict';
 
@@ -65,7 +65,10 @@
     let authCustomPrefix = GM_getValue('authCustomPrefix', '');
     let ttsFetchTimeout = GM_getValue('ttsFetchTimeout', 60000);
     let ttsGenTimeout = GM_getValue('ttsGenTimeout', 180000);
-    let customDataJson = GM_getValue('customDataJson', '{\n  "speed_facter": 1.0,\n  "volume": 1.0,\n  "top_k": 10,\n  "top_p": 1.0,\n  "temperature": 1.0\n}');
+    
+    const defaultJson = '{\n  "api_type": "gpt-sovits",\n  "speed_facter": 1.0,\n  "volume": 1.0,\n  "top_k": 10,\n  "top_p": 1.0,\n  "temperature": 1.0\n}';
+    let customDataJson = GM_getValue('customDataJson', defaultJson);
+    
     let mergeAudioEnabled = GM_getValue('mergeAudioEnabled', false);
     let refAudioPath = GM_getValue('refAudioPath', '');
     let promptText = GM_getValue('promptText', '');
@@ -79,14 +82,8 @@
     let characterVoices = GM_getValue('characterVoicesOnline', {});
     let characterGroups = GM_getValue('characterGroupsOnline', {});
     let allDetectedCharacters = new Set(GM_getValue('allDetectedCharactersOnline', []));
-    let floatPanelPos = GM_getValue('floatPanelPos', {
-        top: '20%',
-        right: '20px'
-    });
-    let settingsPanelPos = GM_getValue('settingsPanelPos', {
-        top: '50%',
-        left: '50%'
-    });
+    let floatPanelPos = GM_getValue('floatPanelPos', { top: '20%', right: '20px' });
+    let settingsPanelPos = GM_getValue('settingsPanelPos', { top: '50%', left: '50%' });
     let isPlaying = false;
     let isPaused = false;
     let isGenerating = false;
@@ -150,7 +147,7 @@
         }, duration);
     }
 
-    // 模块：工具函数（语言检测、文件处理与白名单）
+    // 模块：工具函数（语言检测、文件处理与脱敏）
     function detectLanguage(text) {
         if (!text) return 'zh';
         if (/^[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef\s]+$/.test(text)) return 'zh';
@@ -171,9 +168,7 @@
             let n = bstr.length;
             const u8arr = new Uint8Array(n);
             while (n--) u8arr[n] = bstr.charCodeAt(n);
-            return new File([u8arr], filename, {
-                type: mime
-            });
+            return new File([u8arr], filename, { type: mime });
         } catch (e) {
             console.error("恢复音频文件失败", e);
             return null;
@@ -205,6 +200,25 @@
         return ['「', '」'];
     }
 
+    function maskUrlDisplay(url) {
+        if (!url || url.length < 15) return url;
+        try {
+            const urlObj = new URL(url);
+            const protocol = urlObj.protocol + "//";
+            const host = urlObj.host;
+            const path = urlObj.pathname;
+            const lastPart = path.split('/').pop() || '';
+            return `${protocol}${host}/*/*/${lastPart.substring(Math.max(0, lastPart.length - 3))}`;
+        } catch(e) {
+            return url.substring(0, 10) + '...';
+        }
+    }
+
+    function maskTokenDisplay(token) {
+        if (!token || token.length < 6) return '******';
+        return '********' + token.substring(token.length - 4);
+    }
+
     // 模块：网络请求封装
     async function makeRequest(url, options = {}) {
         return new Promise((resolve, reject) => {
@@ -215,20 +229,13 @@
                 data: options.data,
                 responseType: options.responseType,
                 timeout: options.timeout || ttsFetchTimeout,
-                onload: (res) => {
-                    resolve(res);
-                },
+                onload: (res) => { resolve(res); },
                 onerror: (err) => {
-                    addLog('net', `网络层错误`, {
-                        error: err
-                    });
+                    addLog('net', `网络层错误`, { error: err });
                     reject(err);
                 },
                 ontimeout: () => {
-                    addLog('net', `请求超时`, {
-                        url: url,
-                        timeout: options.timeout || ttsFetchTimeout
-                    });
+                    addLog('net', `请求超时`, { url: url, timeout: options.timeout || ttsFetchTimeout });
                     reject(new Error("Timeout"));
                 }
             });
@@ -239,114 +246,67 @@
     async function generateAudio(task) {
         const lang = detectLanguage(task.dialogue);
         let requestPayload = {};
+        
         try {
             requestPayload = JSON.parse(customDataJson);
-        } catch (e) {}
+        } catch (e) {
+            throw new Error("JSON 配置格式错误");
+        }
 
-        const isOpenAI = requestPayload.model || requestPayload.api_type === 'openai';
+        if (!requestPayload.api_type || requestPayload.api_type.trim() === "") {
+            showNotification('JSON 配置缺少 api_type', 'error');
+            throw new Error("FATAL: Missing api_type in configuration");
+        }
 
-        if (isOpenAI) {
-            requestPayload.input = task.dialogue;
+        const apiType = requestPayload.api_type.toLowerCase();
+
+        // ---------------- OPENAI 逻辑分支 ----------------
+        if (apiType === "openai") {
+            let promptInstruction = "";
+            if (task.emotion) promptInstruction += `[情绪: ${task.emotion}] `;
+            if (task.character) promptInstruction += `[角色: ${task.character}] `;
+            requestPayload.input = `${promptInstruction}<|endofprompt|>${task.dialogue}`;
+
             delete requestPayload.text;
             delete requestPayload.text_lang;
-            delete requestPayload.api_type;
-
-            if (task.character && characterVoices[task.character] && characterVoices[task.character].speed) {
-                requestPayload.speed = characterVoices[task.character].speed;
-            }
+            delete requestPayload.api_type; 
+            delete requestPayload.prompt_text;
+            delete requestPayload.refer_wav;
 
             if (requestPayload.references && Array.isArray(requestPayload.references)) {
                 requestPayload.references.forEach(ref => {
                     if (ref.audio === "savedRefAudioBase64") {
                         if (savedRefAudioBase64) {
                             ref.audio = savedRefAudioBase64;
-                            addLog('sys', '已将 savedRefAudioBase64 变量替换为实际音频数据');
+                            addLog('sys', 'OpenAI: 已注入参考音频 Base64');
                         } else {
-                            addLog('warn', 'JSON配置引用了 savedRefAudioBase64，但当前未上传参考音频');
+                            addLog('warn', 'OpenAI: 配置引用了 Base64 但未上传音频');
                         }
                     }
                     if (ref.text === "promptText") {
-                        if (promptText) {
-                            ref.text = promptText;
-                        } else {
-                            addLog('warn', 'JSON配置引用了 promptText，但当前未填写参考文本');
-                        }
+                        ref.text = promptText || "";
                     }
                 });
             }
 
-            const headers = {
-                "Content-Type": "application/json"
-            };
+            const headers = { "Content-Type": "application/json" };
             if (authToken && authToken.trim() !== "") {
                 headers["Authorization"] = `Bearer ${authToken}`;
             }
 
-            const finalData = JSON.stringify(requestPayload);
-            const retryInterval = 10000;
-            const maxDuration = Math.max(ttsFetchTimeout, ttsGenTimeout);
-            const maxRetries = Math.ceil(maxDuration / retryInterval);
-
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                if (!isPlaying && !GalStreamingPlayer.isActive) {
-                    throw new Error("ABORT_BY_USER");
-                }
-                try {
-                    if (attempt > 1) addLog('warn', `[重试] 第 ${attempt}/${maxRetries} 次尝试...`);
-                    const response = await makeRequest(ttsApiUrl, {
-                        method: "POST",
-                        headers: headers,
-                        data: finalData,
-                        timeout: ttsGenTimeout,
-                        responseType: 'blob'
-                    });
-
-                    if (response.status >= 400) {
-                        let errorText = "Client Error";
-                        try {
-                            errorText = await response.response.text();
-                        } catch (e) {}
-                        addLog('err', `API请求拒绝 (Status: ${response.status})`, {
-                            response: errorText
-                        });
-                        throw new Error("FATAL_CLIENT_ERROR");
-                    }
-
-                    const blob = response.response;
-                    if (!(blob instanceof Blob)) {
-                        throw new Error("INVALID_RESPONSE_TYPE");
-                    }
-
-                    const audioUrl = URL.createObjectURL(blob);
-                    addLog('net', `API 生成成功 (Binary)`, {
-                        size: blob.size,
-                        audioUrl: audioUrl
-                    });
-
-                    return {
-                        url: audioUrl,
-                        task: task
-                    };
-
-                } catch (error) {
-                    const fatalErrors = ["FATAL_CLIENT_ERROR", "ABORT_BY_USER"];
-                    if (fatalErrors.includes(error.message) || attempt === maxRetries) {
-                        console.error(`[TTS] 终止请求: ${error.message}`);
-                        throw error;
-                    }
-                    addLog('net', `请求异常: ${error.message || "Network Error"}。10秒后重试...`);
-                    await new Promise(resolve => setTimeout(resolve, retryInterval));
-                }
-            }
-        } else {
-            if (task.character && characterVoices[task.character] && typeof characterVoices[task.character] === 'object') {
-                const charConfig = characterVoices[task.character];
-                if (charConfig.speed) requestPayload.speed_facter = charConfig.speed;
+            return await executeRequest(requestPayload, headers, true);
+        }
+        
+        // ---------------- GPT-SoVITS 逻辑分支 ----------------
+        else if (apiType === "gpt-sovits") {
+            delete requestPayload.api_type;
+            
+            if (task.character && characterVoices[task.character] && characterVoices[task.character].speed) {
+                requestPayload.speed_facter = characterVoices[task.character].speed;
             }
 
             if (task.emotion && task.emotion.trim() !== '') {
                 requestPayload.emotion = task.emotion.trim();
-                addLog('sys', `检测到情绪 [${task.emotion.trim()}]，已添加到请求体`);
             }
 
             let headers = {};
@@ -357,6 +317,7 @@
             }
 
             let finalData;
+
             if (mergeAudioEnabled) {
                 if (!refAudioFile || !(refAudioFile instanceof File)) {
                     if (savedRefAudioBase64) refAudioFile = b64toFile(savedRefAudioBase64, refAudioPath);
@@ -371,6 +332,7 @@
                 finalData.append('refer_wav', refAudioFile);
                 finalData.append('prompt_text', promptText);
                 finalData.append('prompt_text_lang', detectLanguage(promptText));
+                
                 for (const [key, value] of Object.entries(requestPayload)) {
                     finalData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
                 }
@@ -381,78 +343,80 @@
                 headers["Content-Type"] = "application/json";
             }
 
-            const retryInterval = 10000;
-            const maxDuration = Math.max(ttsFetchTimeout, ttsGenTimeout);
-            const maxRetries = Math.ceil(maxDuration / retryInterval);
+            return await executeRequest(finalData, headers, false, task);
+        } 
+        
+        else {
+            throw new Error(`不支持的 api_type: ${apiType}`);
+        }
+    }
 
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                if (!isPlaying && !GalStreamingPlayer.isActive) {
-                    throw new Error("ABORT_BY_USER");
+    // 统一请求执行器
+    async function executeRequest(data, headers, isOpenAiMode, taskOriginal = null) {
+        const retryInterval = 10000;
+        const maxDuration = Math.max(ttsFetchTimeout, ttsGenTimeout);
+        const maxRetries = Math.ceil(maxDuration / retryInterval);
+        const isFormData = data instanceof FormData;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            if (!isPlaying && !GalStreamingPlayer.isActive) {
+                throw new Error("ABORT_BY_USER");
+            }
+            try {
+                if (attempt > 1) addLog('warn', `[重试] 第 ${attempt}/${maxRetries} 次尝试...`);
+                
+                const requestOpt = {
+                    method: "POST",
+                    headers: headers,
+                    data: isFormData ? data : (typeof data === 'string' ? data : JSON.stringify(data)),
+                    timeout: ttsGenTimeout
+                };
+                
+                if (isOpenAiMode) {
+                    requestOpt.responseType = 'blob';
                 }
 
-                try {
-                    if (attempt > 1) addLog('warn', `[重试] 第 ${attempt}/${maxRetries} 次尝试...`);
+                const response = await makeRequest(ttsApiUrl, requestOpt);
 
-                    const response = await makeRequest(ttsApiUrl, {
-                        method: "POST",
-                        headers: headers,
-                        data: finalData,
-                        timeout: ttsGenTimeout
-                    });
+                if (response.status >= 400) {
+                    let errorText = "Client Error";
+                    try { errorText = response.responseText || await response.response.text(); } catch (e) {}
+                    addLog('err', `API请求拒绝 (Status: ${response.status})`, { response: errorText });
+                    throw new Error("FATAL_CLIENT_ERROR");
+                }
 
-                    if (response.status >= 400 && response.status < 500) {
-                        const errMsg = `请求被拒绝 (Status: ${response.status})`;
-                        addLog('err', errMsg, {
-                            status: response.status,
-                            responseText: response.responseText.length > 200 ? 'Response too long/HTML' : response.responseText
-                        });
-                        throw new Error("FATAL_CLIENT_ERROR");
-                    }
-
-                    let audioUrl;
+                let audioUrl;
+                
+                if (isOpenAiMode) {
+                    const blob = response.response;
+                    if (!(blob instanceof Blob)) throw new Error("INVALID_RESPONSE_TYPE");
+                    audioUrl = URL.createObjectURL(blob);
+                } else {
                     try {
                         const json = JSON.parse(response.responseText);
-                        if (json.detail || json.error) {
-                            addLog('err', `API返回业务错误`, {
-                                error: json
-                            });
-                            throw new Error("API_BUSINESS_ERROR");
-                        }
+                        if (json.detail || json.error) throw new Error("API_BUSINESS_ERROR");
                         audioUrl = json.audio_url || json.url;
-                        if (!audioUrl) {
-                            addLog('err', `JSON缺少 audio_url 字段`, {
-                                json: json
-                            });
-                            throw new Error("INVALID_JSON_STRUCTURE");
-                        }
-                        addLog('net', `API 返回成功`, {
-                            status: response.status,
-                            audioUrl: audioUrl
-                        });
+                        if (!audioUrl) throw new Error("INVALID_JSON_STRUCTURE");
                     } catch (jsonErr) {
-                        if (jsonErr.message === "API_BUSINESS_ERROR" || jsonErr.message === "INVALID_JSON_STRUCTURE") {
-                            throw new Error("FATAL_JSON_ERROR");
-                        }
-                        addLog('net', `JSON 解析失败 (可能非 JSON 响应)`, {
-                            responseText: response.responseText.substring(0, 100)
-                        });
-                        throw new Error("JSON_PARSE_FAILED");
+                         if (response.response instanceof Blob) {
+                             audioUrl = URL.createObjectURL(response.response);
+                         } else {
+                             throw new Error("FATAL_JSON_ERROR");
+                         }
                     }
-
-                    return {
-                        url: audioUrl,
-                        task: task
-                    };
-
-                } catch (error) {
-                    const fatalErrors = ["FATAL_CLIENT_ERROR", "FATAL_JSON_ERROR", "ABORT_BY_USER"];
-                    if (fatalErrors.includes(error.message) || attempt === maxRetries) {
-                        console.error(`[TTS] 终止请求: ${error.message}`);
-                        throw error;
-                    }
-                    addLog('net', `请求异常: ${error.message || "Network Error"} (Status: ${error.status || 'Unknown'})。10秒后重试...`);
-                    await new Promise(resolve => setTimeout(resolve, retryInterval));
                 }
+
+                addLog('net', `生成成功`, { audioUrl: audioUrl });
+                return { url: audioUrl, task: taskOriginal };
+
+            } catch (error) {
+                const fatalErrors = ["FATAL_CLIENT_ERROR", "FATAL_JSON_ERROR", "ABORT_BY_USER"];
+                if (fatalErrors.includes(error.message) || attempt === maxRetries) {
+                    console.error(`[TTS] 终止请求: ${error.message}`);
+                    throw error;
+                }
+                addLog('net', `请求异常: ${error.message}。10秒后重试...`);
+                await new Promise(resolve => setTimeout(resolve, retryInterval));
             }
         }
     }
@@ -483,15 +447,8 @@
             }
             currentAudio = audioPlayer;
 
-            const onEnded = () => {
-                cleanup();
-                resolve();
-            };
-            const onError = (e) => {
-                cleanup();
-                if (audioPlayer.src) reject(new Error("音频播放失败"));
-                else resolve();
-            };
+            const onEnded = () => { cleanup(); resolve(); };
+            const onError = (e) => { cleanup(); if (audioPlayer.src) reject(new Error("音频播放失败")); else resolve(); };
             const cleanup = () => {
                 audioPlayer.removeEventListener('ended', onEnded);
                 audioPlayer.removeEventListener('error', onError);
@@ -513,9 +470,7 @@
         currentSegments: [],
         currentIndex: 0,
         audioCache: new Map(),
-        config: {
-            preloadCount: 3,
-        },
+        config: { preloadCount: 3 },
         async initialize(galDialogues) {
             if (!galDialogues || galDialogues.length === 0) return false;
             this.isActive = true;
@@ -541,17 +496,13 @@
                 character: segment.character || '',
                 emotion: segment.emotion || '',
             };
-            this.audioCache.set(index, {
-                status: 'pending'
-            });
+            this.audioCache.set(index, { status: 'pending' });
             try {
                 const result = await generateAudio(task);
-                const blobUrl = await fetchAudioBlob(result.url);
-                const audioData = {
-                    ...result,
-                    blobUrl: blobUrl,
-                    status: 'ready'
-                };
+                const urlToFetch = result.url; 
+                
+                const blobUrl = await fetchAudioBlob(urlToFetch);
+                const audioData = { ...result, blobUrl: blobUrl, status: 'ready' };
                 this.audioCache.set(index, audioData);
                 return audioData;
             } catch (error) {
@@ -642,20 +593,13 @@
             isDragging = false;
             element.classList.remove('dragging');
             element.style.transition = '';
-            GM_setValue(saveKey, {
-                top: element.style.top,
-                left: element.style.left
-            });
+            GM_setValue(saveKey, { top: element.style.top, left: element.style.left });
         };
 
         handle.addEventListener('mousedown', onStart);
-        handle.addEventListener('touchstart', onStart, {
-            passive: false
-        });
+        handle.addEventListener('touchstart', onStart, { passive: false });
         document.addEventListener('mousemove', onMove);
-        document.addEventListener('touchmove', onMove, {
-            passive: false
-        });
+        document.addEventListener('touchmove', onMove, { passive: false });
         document.addEventListener('mouseup', onEnd);
         document.addEventListener('touchend', onEnd);
     }
@@ -689,12 +633,8 @@
             </div>
         `;
 
-        panel.addEventListener('mouseenter', () => {
-            if (edgeMode) panel.classList.add('expanded');
-        });
-        panel.addEventListener('mouseleave', () => {
-            if (edgeMode) panel.classList.remove('expanded');
-        });
+        panel.addEventListener('mouseenter', () => { if (edgeMode) panel.classList.add('expanded'); });
+        panel.addEventListener('mouseleave', () => { if (edgeMode) panel.classList.remove('expanded'); });
 
         document.body.appendChild(panel);
         makeDraggable(panel, panel, 'floatPanelPos');
@@ -711,10 +651,7 @@
 
     function toggleSettingsPanel() {
         const exist = document.getElementById('tts-settings-modal');
-        if (exist) {
-            exist.remove();
-            return;
-        }
+        if (exist) { exist.remove(); return; }
         const modal = document.createElement('div');
         modal.id = 'tts-settings-modal';
         modal.className = 'tts-modal';
@@ -729,14 +666,8 @@
             if (!isDefault) {
                 const leftNum = parseInt(settingsPanelPos.left);
                 const topNum = parseInt(settingsPanelPos.top);
-                const isValid = !isNaN(leftNum) && !isNaN(topNum) &&
-                    topNum > 20 && topNum < (windowHeight - 50) &&
-                    leftNum > 0 && leftNum < (windowWidth - 50);
-                if (isValid) {
-                    useSavedPos = true;
-                } else {
-                    console.log("[TTS] 保存的面板位置异常(顶出屏幕或越界)，已重置为屏幕居中");
-                }
+                const isValid = !isNaN(leftNum) && !isNaN(topNum) && topNum > 20 && topNum < (windowHeight - 50) && leftNum > 0 && leftNum < (windowWidth - 50);
+                if (isValid) useSavedPos = true;
             }
         }
 
@@ -759,7 +690,8 @@
             content.style.transform = 'none';
         }
 
-        const authTokenValue = authToken || "";
+        const displayUrl = maskUrlDisplay(ttsApiUrl);
+        const displayToken = maskTokenDisplay(authToken);
 
         content.innerHTML = `
             <div class="tts-modal-header">
@@ -777,7 +709,7 @@
                     <div class="tts-setting-item">
                         <label>自定义TTS API地址</label>
                         <div class="tts-api-input-group" style="display:flex; gap:10px;">
-                            <input type="text" id="cfg-api-url" value="${ttsApiUrl}" placeholder="http://127.0.0.1:8000" style="flex:1;">
+                            <input type="text" id="cfg-api-url" value="${displayUrl}" placeholder="http://127.0.0.1:8000" style="flex:1;">
                             <button id="cfg-test-conn" class="tts-test-btn">测试</button>
                         </div>
                     </div>
@@ -795,7 +727,7 @@
                                 <div class="custom-prefix-wrap" id="custom-prefix-wrap">
                                     <input type="text" id="custom-auth-prefix" class="auth-input custom-auth-prefix" value="${authCustomPrefix}" placeholder="前缀">
                                 </div>
-                                <input type="text" id="tts-bearer-token" class="auth-input tts-bearer-token" value="${authTokenValue}" placeholder="无需输入">
+                                <input type="text" id="tts-bearer-token" class="auth-input tts-bearer-token" value="${displayToken}" placeholder="无需输入">
                             </div>
                         </div>
                     </div>
@@ -812,19 +744,18 @@
                                 <input type="number" id="cfg-timeout-gen" value="${ttsGenTimeout / 1000}" min="10" max="600" style="width:100%;">
                             </div>
                         </div>
-                        <div style="font-size:12px; color:#ff6b6b; margin-top:5px; line-height:1.4; background:#fff0f0; padding:4px; border-radius:4px;">
-                            * 失败保护：请求错误每10秒重试1次，最大秒数为上方最大值。<br>
-                            * 智能熔断：4xx错误(如鉴权/地址)或JSON异常将直接报错停止。
-                        </div>
                     </div>
 
                     <div class="tts-setting-item">
-                        <label>请求体data配置 (JSON)</label>
-                        <textarea id="cfg-json-data" rows="4" style="width:100%; font-family:monospace; font-size:12px;">${customDataJson}</textarea>
+                        <label>请求体配置 (JSON必须包含api_type:"")</label>
+                        <div style="font-size:12px; color:#666; margin-bottom:4px;">
+                           支持 api_type: "openai" 或 "gpt-sovits"
+                        </div>
+                        <textarea id="cfg-json-data" rows="6" style="width:100%; font-family:monospace; font-size:12px;">${customDataJson}</textarea>
                     </div>
                     <div class="tts-setting-item">
                         <label class="tts-switch-label">
-                            <span>开启合音 模式</span>
+                            <span>开启合音模式(上传音频，参考文本)</span>
                             <div>
                                 <input type="checkbox" id="cfg-merge-audio" ${mergeAudioEnabled ? 'checked' : ''}>
                                 <span class="tts-switch-slider"></span>
@@ -879,7 +810,7 @@
                     </div>
 
                     <div class="tts-setting-item">
-                        <label>引号样式 (严格匹配)</label>
+                        <label>引号样式</label>
                         <select id="cfg-quote">
                             <option value="japanese" ${quotationStyle==='japanese'?'selected':''}>「日式引号」</option>
                             <option value="chinese" ${quotationStyle==='chinese'?'selected':''}>“中文引号”</option>
@@ -892,9 +823,7 @@
                 <h3><i class="icon">🏷️</i> 分组角色设置</h3>
                 <div class="tts-group-controls" style="display: flex; align-items: center; gap: 8px; width: 100%;">
                     <input type="text" id="new-group-name" placeholder="角色名称" style="flex: 1; min-width: 0; height: 36px; padding: 0 5px; box-sizing: border-box; margin: 0;">
-                    
                     <input type="color" id="new-group-color" value="#667eea" style="flex-shrink: 0; width: 40px; height: 36px; padding: 2px; border: 1px solid #ced4da; border-radius: 6px; box-sizing: border-box; cursor: pointer; margin: 0;">
-                    
                     <button id="add-group-btn" class="tts-add-group-btn" style="flex-shrink: 0; height: 36px; margin: 0; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; white-space: nowrap;">创建</button>
                 </div>
                 <div id="character-groups-container"></div>
@@ -915,7 +844,7 @@
         renderDetectedChars(content);
     }
 
-    // 模块：设置面板逻辑与事件绑定
+    // 模块：设置面板逻辑与事件绑定（含脱敏还原逻辑）
     function bindSettingsEvents(modal, content) {
         content.querySelector('.tts-close-btn').onclick = () => modal.remove();
         content.querySelector('#btn-logs').onclick = showConsoleLogger;
@@ -927,9 +856,13 @@
             if (el) el.addEventListener('change', (e) => setter(e.target.type === 'checkbox' ? e.target.checked : e.target.value));
         };
 
-        bindInput('#cfg-api-url', v => {
-            ttsApiUrl = v;
-            GM_setValue('ttsApiUrl', v);
+        const urlInput = content.querySelector('#cfg-api-url');
+        urlInput.addEventListener('change', (e) => {
+            const newVal = e.target.value;
+            if (newVal !== maskUrlDisplay(ttsApiUrl)) {
+                ttsApiUrl = newVal;
+                GM_setValue('ttsApiUrl', newVal);
+            }
         });
 
         const authTypeSelect = content.querySelector('#auth-type');
@@ -968,9 +901,13 @@
             authCustomPrefix = e.target.value;
             GM_setValue('authCustomPrefix', authCustomPrefix);
         });
+        
         ttsBearerToken.addEventListener('change', (e) => {
-            authToken = e.target.value;
-            GM_setValue('authToken', authToken);
+            const newVal = e.target.value;
+            if (newVal !== maskTokenDisplay(authToken)) {
+                authToken = newVal;
+                GM_setValue('authToken', authToken);
+            }
         });
 
         handleAuthTypeChange();
@@ -1089,10 +1026,7 @@
             const name = content.querySelector('#new-group-name').value.trim();
             const color = content.querySelector('#new-group-color').value;
             if (name && !characterGroups[name]) {
-                characterGroups[name] = {
-                    color,
-                    characters: []
-                };
+                characterGroups[name] = { color, characters: [] };
                 GM_setValue('characterGroupsOnline', characterGroups);
                 renderCharacterGroups(content);
             }
@@ -1156,11 +1090,9 @@
             item.className = 'tts-char-item-simple';
             item.innerHTML = `<span>${char}</span><div><button class="cfg-char" title="配置独立参数">⚙</button><button class="del-char" title="删除">×</button></div>`;
             item.querySelector('.cfg-char').onclick = () => {
-                const speed = prompt(`设置 ${char} 的语速 (覆盖全局):`, (characterVoices[char] && characterVoices[char].speed) || 1.0);
+                const speed = prompt(`设置 ${char} 的语速 (仅GPT-SoVITS有效):`, (characterVoices[char] && characterVoices[char].speed) || 1.0);
                 if (speed) {
-                    characterVoices[char] = {
-                        speed: parseFloat(speed)
-                    };
+                    characterVoices[char] = { speed: parseFloat(speed) };
                     GM_setValue('characterVoicesOnline', characterVoices);
                     alert(`已保存 ${char} 的配置`);
                 }
@@ -1197,10 +1129,7 @@
             results.push(`🔑 Script Version: ${GM_info.script.version}`);
         }
         if (navigator.connection) {
-            const {
-                effectiveType,
-                downlink
-            } = navigator.connection;
+            const { effectiveType, downlink } = navigator.connection;
             results.push(`📡 Connection: ${effectiveType} (${downlink} Mbps)`);
         }
 
@@ -1233,14 +1162,14 @@
             });
 
             if (ttsRes.status >= 200 && ttsRes.status < 300) {
-                results.push(`✅ TTS服务器 (${ttsApiUrl}): 连接成功 (${ttsRes.status})`);
+                results.push(`✅ TTS服务器 (${maskUrlDisplay(ttsApiUrl)}): 连接成功 (${ttsRes.status})`);
                 btn.style.background = '#28a745';
             } else {
-                results.push(`❌ TTS服务器 (${ttsApiUrl}): 异常状态码 ${ttsRes.status} ${ttsRes.statusText}`);
+                results.push(`❌ TTS服务器 (${maskUrlDisplay(ttsApiUrl)}): 异常状态码 ${ttsRes.status} ${ttsRes.statusText}`);
                 btn.style.background = '#dc3545';
             }
         } catch (e) {
-            results.push(`❌ TTS服务器 (${ttsApiUrl}): 请求失败 - ${e.message || "无法连接"}`);
+            results.push(`❌ TTS服务器 (${maskUrlDisplay(ttsApiUrl)}): 请求失败 - ${e.message || "无法连接"}`);
             btn.style.background = '#dc3545';
         }
 
@@ -1578,9 +1507,7 @@
 
             document.addEventListener('mousemove', mouseMoveHandler);
             document.addEventListener('mouseup', mouseUpHandler);
-            document.addEventListener('touchmove', touchMoveHandler, {
-                passive: false
-            });
+            document.addEventListener('touchmove', touchMoveHandler, { passive: false });
             document.addEventListener('touchend', touchEndHandler);
         };
 
@@ -1613,9 +1540,7 @@
         };
 
         indicator.addEventListener('mousedown', dragStart);
-        indicator.addEventListener('touchstart', dragStart, {
-            passive: false
-        });
+        indicator.addEventListener('touchstart', dragStart, { passive: false });
         indicator.addEventListener('click', (e) => {
             if (!hasDragged) {
                 showPanel();
@@ -1927,7 +1852,6 @@
         if (!isPlaying || generationQueue.length === 0) {
             isGenerating = false;
             updatePlayBtnState();
-            if (generationQueue.length === 0 && playbackQueue.length === 0 && !isGenerating && !currentAudio) {}
             return;
         }
 
@@ -2186,7 +2110,6 @@
             min-height: 36px;
         }
 
-        /* 修复：移动端分组控件溢出，使用 min-width:0 防止 flex 子项撑开容器 */
         div.tts-modal .tts-group-controls {
             display: flex !important; align-items: center !important; gap: 8px !important; width: 100%;
         }
