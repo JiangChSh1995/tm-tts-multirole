@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         多角色TTS播放器
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.3.2
 // @description  网页通用TTS播放器，集成GAL游戏流式语音引擎，支持多角色与情绪自动识别、自定义API连接（OpenAI/GPT-SoVITS双模式）、自动播放及移动端UI适配，支持Json自定义模式。
 // @author       JChSh (Modified)
 // @match        *://*/*
@@ -296,6 +296,9 @@
                     else if (current[key] === '{{emotion}}') {
                         current[key] = replacements.emotion || ""; 
                     }
+                    else if (current[key] === '{{prompt_text}}') {
+                    current[key] = replacements.promptText || ""; 
+                    }
                 }
             }
         }
@@ -324,6 +327,7 @@
         const replacementData = {
             text: task.dialogue,
             emotion: task.emotion || "", 
+            promptText: promptText || "",
             audioBase64: savedRefAudioBase64 || ""
         };
         // ---------------- LANG 逻辑分支 ----------------
