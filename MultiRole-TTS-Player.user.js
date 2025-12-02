@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         多角色TTS播放器
 // @namespace    http://tampermonkey.net/
-// @version      1.3.2
+// @version      1.4
 // @description  网页通用TTS播放器，集成GAL游戏流式语音引擎，支持多角色与情绪自动识别、自定义API连接（OpenAI/GPT-SoVITS双模式）、自动播放及移动端UI适配，支持Json自定义模式。
-// @author       JChSh (Modified)
+// @author       JChSh
 // @match        *://*/*
 // @connect      *
 // @grant        GM_xmlhttpRequest
@@ -324,13 +324,28 @@
             throw new Error("FATAL: Missing api_type in configuration");
         }
 
+        const charSettings = (task.character && characterVoices[task.character]) ? characterVoices[task.character] : {};
+        const effectivePromptText = charSettings.promptText || promptText || "";
+        const effectiveAudioBase64 = charSettings.audioBase64 || savedRefAudioBase64 || "";
+        
+        let effectiveAudioFile = null;
+        if (charSettings.audioBase64) {
+            const safeCharName = task.character.replace(/[\\/:*?"<>|]/g, '_');
+            effectiveAudioFile = b64toFile(charSettings.audioBase64, `ref_${safeCharName}.wav`);
+        } else {
+            effectiveAudioFile = refAudioFile;
+            if (!effectiveAudioFile && savedRefAudioBase64) {
+                effectiveAudioFile = b64toFile(savedRefAudioBase64, refAudioPath || "ref_audio.wav");
+            }
+        }
+
         const replacementData = {
             text: task.dialogue,
             emotion: task.emotion || "", 
-            promptText: promptText || "",
-            audioBase64: savedRefAudioBase64 || ""
+            promptText: effectivePromptText,
+            audioBase64: effectiveAudioBase64
         };
-        // ---------------- LANG 逻辑分支 ----------------
+
         if (isCustomLangMode) {
             const { newObj, hasReplacedText } = processTemplateValues(requestPayload, replacementData);
             requestPayload = newObj;
@@ -340,7 +355,6 @@
             }
         }
 
-        // ---------------- OPENAI 逻辑分支 ----------------
         if (apiType === "openai") {
             if (!isCustomLangMode) {
                 let promptInstruction = "";
@@ -353,14 +367,13 @@
                 delete requestPayload.prompt_text;
                 delete requestPayload.refer_wav;
 
-                // 处理引用音频
                 if (requestPayload.references && Array.isArray(requestPayload.references)) {
                     requestPayload.references.forEach(ref => {
-                        if (ref.audio === "savedRefAudioBase64") {
-                            ref.audio = savedRefAudioBase64 || "";
+                        if (ref.audio === "savedRefAudioBase64" || ref.audio === "{{audio_base64}}") {
+                            ref.audio = effectiveAudioBase64;
                         }
-                        if (ref.text === "promptText") {
-                            ref.text = promptText || "";
+                        if (ref.text === "promptText" || ref.text === "{{prompt_text}}") {
+                            ref.text = effectivePromptText;
                         }
                     });
                 }
@@ -373,14 +386,13 @@
                 headers["Authorization"] = `Bearer ${authToken}`;
             }
 
-            return await executeRequest(requestPayload, headers, true);
+            return await executeRequest(requestPayload, headers, true, task);
         }
         
-        // ---------------- GPT-SoVITS 逻辑分支 ----------------
         else if (apiType === "gpt-sovits") {
             if (!isCustomLangMode) {
-                if (task.character && characterVoices[task.character] && characterVoices[task.character].speed) {
-                    requestPayload.speed_facter = characterVoices[task.character].speed;
+                if (charSettings.speed) {
+                    requestPayload.speed_facter = charSettings.speed;
                 }
                 if (task.emotion && task.emotion.trim() !== '') {
                     requestPayload.emotion = task.emotion.trim();
@@ -398,14 +410,10 @@
 
             let finalData;
 
-            // 处理合音/文件上传模式
             if (mergeAudioEnabled) {
-                if (!refAudioFile || !(refAudioFile instanceof File)) {
-                    if (savedRefAudioBase64) refAudioFile = b64toFile(savedRefAudioBase64, refAudioPath);
-                    if (!refAudioFile) {
-                        showNotification('⚠️ 参考音频丢失', 'error');
-                        throw new Error("参考音频文件无效");
-                    }
+                if (!effectiveAudioFile || !(effectiveAudioFile instanceof File)) {
+                    showNotification('⚠️ 参考音频丢失', 'error');
+                    throw new Error("参考音频文件无效");
                 }
 
                 finalData = new FormData();
@@ -413,7 +421,7 @@
                 if (isCustomLangMode) {
                     for (const [key, value] of Object.entries(requestPayload)) {
                         if (value === '{{audio_file}}') {
-                            finalData.append(key, refAudioFile);
+                            finalData.append(key, effectiveAudioFile);
                         } else {
                             finalData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
                         }
@@ -421,9 +429,9 @@
                 } else {
                     finalData.append('text', task.dialogue);
                     finalData.append('text_lang', lang);
-                    finalData.append('refer_wav', refAudioFile);
-                    finalData.append('prompt_text', promptText);
-                    finalData.append('prompt_text_lang', detectLanguage(promptText));
+                    finalData.append('refer_wav', effectiveAudioFile);
+                    finalData.append('prompt_text', effectivePromptText);
+                    finalData.append('prompt_text_lang', detectLanguage(effectivePromptText));
                     
                     for (const [key, value] of Object.entries(requestPayload)) {
                         finalData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
@@ -1196,7 +1204,10 @@
             item.querySelector('.cfg-char').onclick = () => {
                 const speed = prompt(`设置 ${char} 的语速 (仅GPT-SoVITS有效):`, (characterVoices[char] && characterVoices[char].speed) || 1.0);
                 if (speed) {
-                    characterVoices[char] = { speed: parseFloat(speed) };
+                    characterVoices[char] = { 
+                        ...(characterVoices[char] || {}),
+                        speed: parseFloat(speed) 
+                    };
                     GM_setValue('characterVoicesOnline', characterVoices);
                     alert(`已保存 ${char} 的配置`);
                 }
@@ -1210,6 +1221,7 @@
             list.appendChild(item);
         });
     }
+
 
     // 模块：诊断与调试工具
     async function performNetworkTest() {
