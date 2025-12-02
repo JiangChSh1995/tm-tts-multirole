@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         多角色TTS播放器
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.5
 // @description  网页通用TTS播放器，集成GAL游戏流式语音引擎，支持多角色与情绪自动识别、自定义API连接（OpenAI/GPT-SoVITS双模式）、自动播放及移动端UI适配，支持Json自定义模式。
 // @author       JChSh
 // @match        *://*/*
@@ -147,7 +147,7 @@
         }, duration);
     }
 
-    // 模块：工具函数（语言检测、文件处理与脱敏）
+    // 模块：工具函数
     function detectLanguage(text) {
         if (!text) return 'zh';
         if (/^[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef\s]+$/.test(text)) return 'zh';
@@ -311,7 +311,31 @@
     async function generateAudio(task) {
         const lang = detectLanguage(task.dialogue);
         
-        const parseResult = parseCustomInput(customDataJson);
+        let targetJsonStr = customDataJson;
+        let targetPromptText = promptText;
+        let targetAudioBase64 = savedRefAudioBase64;
+        let targetAudioFile = refAudioFile;
+        let foundGroup = null;
+
+        for (const [groupName, groupData] of Object.entries(characterGroups)) {
+            if (groupData.characters && groupData.characters.includes(task.character)) {
+                foundGroup = groupData;
+                break;
+            }
+        }
+
+        if (foundGroup) {
+            addLog('sys', `角色 [${task.character}] 匹配到分组预设: ${foundGroup.audioPath || '配置项'}`);
+            
+            if (foundGroup.dataJson) targetJsonStr = foundGroup.dataJson;
+            if (foundGroup.promptText) targetPromptText = foundGroup.promptText;
+            if (foundGroup.audioBase64) {
+                targetAudioBase64 = foundGroup.audioBase64;
+                targetAudioFile = b64toFile(targetAudioBase64, `group_preset_${task.character}.wav`);
+            }
+        }
+
+        const parseResult = parseCustomInput(targetJsonStr); 
         if (parseResult.error) throw new Error("JSON 格式错误: " + parseResult.error.message);
 
         let requestPayload = parseResult.jsonObj;
@@ -325,17 +349,17 @@
         }
 
         const charSettings = (task.character && characterVoices[task.character]) ? characterVoices[task.character] : {};
-        const effectivePromptText = charSettings.promptText || promptText || "";
-        const effectiveAudioBase64 = charSettings.audioBase64 || savedRefAudioBase64 || "";
+        const effectivePromptText = charSettings.promptText || targetPromptText || ""; // 使用 targetPromptText
+        const effectiveAudioBase64 = charSettings.audioBase64 || targetAudioBase64 || ""; // 使用 targetAudioBase64
         
         let effectiveAudioFile = null;
         if (charSettings.audioBase64) {
             const safeCharName = task.character.replace(/[\\/:*?"<>|]/g, '_');
             effectiveAudioFile = b64toFile(charSettings.audioBase64, `ref_${safeCharName}.wav`);
         } else {
-            effectiveAudioFile = refAudioFile;
-            if (!effectiveAudioFile && savedRefAudioBase64) {
-                effectiveAudioFile = b64toFile(savedRefAudioBase64, refAudioPath || "ref_audio.wav");
+            effectiveAudioFile = targetAudioFile; // 使用 targetAudioFile
+            if (!effectiveAudioFile && effectiveAudioBase64) {
+                effectiveAudioFile = b64toFile(effectiveAudioBase64, "ref_restored.wav");
             }
         }
 
@@ -932,7 +956,14 @@
                 </div>
 
             <div class="tts-setting-section">
-                <h3><i class="icon">🏷️</i> 分组角色设置</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #dee2e6; margin-bottom: 15px; padding-bottom: 5px;">
+                    <h3 style="margin: 0; border: none; padding: 0;"><i class="icon">🏷️</i> 分组角色设置</h3>
+                    <div style="display:flex; gap:6px;">
+                        <button id="btn-export-cfg" class="tts-io-btn" title="导出含加密信息的配置">导出</button>
+                        <button id="btn-import-cfg" class="tts-io-btn" title="导入配置">导入</button>
+                        <input type="file" id="import-file-input" style="display:none" accept=".json">
+                    </div>
+                </div>
                 <div class="tts-group-controls" style="display: flex; align-items: center; gap: 8px; width: 100%;">
                     <input type="text" id="new-group-name" placeholder="角色名称" style="flex: 1; min-width: 0; height: 36px; padding: 0 5px; box-sizing: border-box; margin: 0;">
                     <input type="color" id="new-group-color" value="#667eea" style="flex-shrink: 0; width: 40px; height: 36px; padding: 2px; border: 1px solid #ced4da; border-radius: 6px; box-sizing: border-box; cursor: pointer; margin: 0;">
@@ -1134,15 +1165,91 @@
         });
 
         content.querySelector('#cfg-test-conn').onclick = performNetworkTest;
+
         content.querySelector('#add-group-btn').onclick = () => {
             const name = content.querySelector('#new-group-name').value.trim();
             const color = content.querySelector('#new-group-color').value;
-            if (name && !characterGroups[name]) {
-                characterGroups[name] = { color, characters: [] };
+            if (!name) return;
+            
+            if (!characterGroups[name]) {
+                const snapshot = {
+                    color: color,
+                    characters: [],
+                    dataJson: customDataJson,
+                    promptText: promptText,
+                    audioBase64: savedRefAudioBase64,
+                    audioPath: refAudioPath
+                };
+                characterGroups[name] = snapshot;
                 GM_setValue('characterGroupsOnline', characterGroups);
                 renderCharacterGroups(content);
+                
+                const audioStatus = savedRefAudioBase64 ? "含音频" : "无音频";
+                alert(`分组【${name}】创建成功！\n已锁定当前配置 (${audioStatus}) 为该分组专属预设。`);
+            } else {
+                alert("该分组名称已存在！");
             }
         };
+ 
+        // 导出与导入逻辑
+        const utf8_to_b64 = (str) => { try { return window.btoa(unescape(encodeURIComponent(str || ""))); } catch(e) { return ""; } };
+        const b64_to_utf8 = (str) => { try { return decodeURIComponent(escape(window.atob(str || ""))); } catch(e) { return ""; } };
+        
+        const exportBtn = content.querySelector('#btn-export-cfg');
+        if (exportBtn) {
+            exportBtn.onclick = () => {
+                try {
+                    const exportData = {
+                        meta: { version: "1.5", date: new Date().toLocaleString(), desc: "MultiRole-TTS Config File" },
+                        encrypted_auth: { api_url: utf8_to_b64(ttsApiUrl), token: utf8_to_b64(authToken), prefix: utf8_to_b64(authCustomPrefix) },
+                        config: {
+                            authType, ttsFetchTimeout, ttsGenTimeout, customDataJson, mergeAudioEnabled, promptText, refAudioPath,
+                            playbackMode, autoPlayEnabled, detectionMode, quotationStyle, floatPanelPos, settingsPanelPos
+                        },
+                        groups: characterGroups, voices: characterVoices, detected: Array.from(allDetectedCharacters), globalAudio: savedRefAudioBase64
+                    };
+                    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url; a.download = `TTS_Config_${new Date().toISOString().slice(0,10)}.json`;
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                    showNotification("配置已导出 (敏感信息已加密)", "success");
+                } catch (e) { console.error(e); alert("导出失败: " + e.message); }
+            };
+        }
+
+        const importBtn = content.querySelector('#btn-import-cfg');
+        const fileInput = content.querySelector('#import-file-input');
+        if (importBtn && fileInput) {
+            importBtn.onclick = () => fileInput.click();
+            fileInput.onchange = (e) => {
+                const file = e.target.files[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const data = JSON.parse(evt.target.result);
+                        if (data.encrypted_auth) {
+                            const ea = data.encrypted_auth;
+                            if (ea.api_url) GM_setValue('ttsApiUrl', b64_to_utf8(ea.api_url));
+                            if (ea.token) GM_setValue('authToken', b64_to_utf8(ea.token));
+                            if (ea.prefix) GM_setValue('authCustomPrefix', b64_to_utf8(ea.prefix));
+                        }
+                        if (data.config) {
+                            const c = data.config;
+                            const keys = ['authType', 'ttsFetchTimeout', 'ttsGenTimeout', 'customDataJson', 'mergeAudioEnabled', 'promptText', 'refAudioPath', 'playbackMode', 'autoPlayEnabled', 'detectionMode', 'quotationStyle', 'floatPanelPos', 'settingsPanelPos'];
+                            keys.forEach(k => { if (c[k] !== undefined) GM_setValue(k, c[k]); });
+                        }
+                        if (data.groups) GM_setValue('characterGroupsOnline', data.groups);
+                        if (data.voices) GM_setValue('characterVoicesOnline', data.voices);
+                        if (data.detected) GM_setValue('allDetectedCharactersOnline', data.detected);
+                        if (data.globalAudio) GM_setValue('savedRefAudioBase64', data.globalAudio);
+                        alert(`成功导入配置！\n时间: ${data.meta?.date || '未知'}\n页面将刷新以应用更改。`);
+                        location.reload();
+                    } catch (err) { console.error(err); alert("导入失败：文件格式错误或解密失败"); }
+                };
+                reader.readAsText(file);
+                fileInput.value = '';
+            };
+        }
     }
 
     function renderCharacterGroups(container) {
@@ -2325,6 +2432,28 @@
         div.tts-modal input[type="checkbox"] { display: none; }
         
         .log-detail-box { margin-left: 20px; margin-top: 4px; padding: 6px; background: #2d2d2d; border-radius: 4px; color: #d63384; font-family: monospace; font-size: 11px; white-space: pre-wrap; word-break: break-all; }
+        
+        div.tts-modal .tts-io-btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 0 15px;
+            border-radius: 4px;
+            height: 36px;
+            line-height: 36px;
+            cursor: pointer;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.2s;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        div.tts-modal .tts-io-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
 
         @media (max-width: 768px) {
             #tts-floating-panel { transform: scale(0.9); padding: 8px; }
