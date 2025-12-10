@@ -4,8 +4,7 @@
 
 A powerful browser-based TTS (Text-to-Speech) Tampermonkey script. It is specifically designed for web novels, browser-based GALGAMEs (Girl/Game), and online dialogue scenarios, integrating a GAL Streaming Engine, supporting multi-role auto-recognition, emotion tag extraction, and dual custom TTS backend integration (OpenAI/GPT-SoVITS).
 
-> **Credits**: The GAL mode and multi-role emotion design concepts for this project are inspired by **cnfh1746_06138** and **kikukiku0662** from the **Brain-like Community**. Special thanks for the inspiration and creativity.
-
+> **Credits**: - This project is a reconstructed version based on the original work (Tavern TTS) by the Brain-inspired Community members cnfh1746_06138 & kikukiku0662. The front-end CSS design concept, the code for "GAL Streaming Playback Logic" and "Multi-role Emotional Engine" are derived from their scripts. Modification authorization has been obtained.
 ---
 
 ## ✨ Core Features (v1.2 Update)
