@@ -17,40 +17,36 @@
 
 /*
  * =============================
- * COPYRIGHT NOTICE & USER GUIDELINES
+ * COPYRIGHT & LICENSE NOTICE
  * =============================
  *
- * Copyright Notice (English)
- * --------------------------
- * 1. All rights to this script (including but not limited to code, logical architecture, and functional design) are exclusively owned by JChSh (Bilibili UID: 511242). This work is protected by the Copyright Law of the People's Republic of China and relevant international conventions.
- * 2. Without the prior written permission of the copyright owner, no organization or individual may use this script for commercial purposes. Commercial use includes sale, rental, advertising insertion, and association with commercial services.
- * 3. Non-commercial derivative works are permitted only if:
- * - You have obtained written permission from JChSh.
- * - You clearly credit the source: "This work is based on the script created by JChSh (Bilibili UID: 511242). Special thanks to Brain-like Community members cnfh1746_06138 & kikukiku0662 for the GAL mode and multi-character emotional design ideas."
- * - The original copyright notice is not modified or deleted.
- * 4. It is strictly prohibited to use this script for illegal activities.
+ * Project: MultiRole-TTS-Player (Universal Web Version)
+ * Refactored & Adapted by: JChSh (Bilibili UID: 511242)
  *
- * 版权声明 (中文)
- * -----------------
- * 1. 本脚本（含代码、逻辑架构、功能设计）的完整版权归 JChSh（Bilibili UID：511242） 所有，受《中华人民共和国著作权法》等法律保护。
- * 2. 未经版权人事先书面许可，严禁任何形式的商业化用途（包括但不限于售卖、出租、植入广告等）。商业侵权产生的一切收益归版权人所有，侵权方需承担法律责任。
- * 3. 非商业化二创需满足：① 获得 JChSh 书面许可；② 在显著位置标注：“本作品基于 JChSh（Bilibili UID：511242）的脚本创作，GAL模式与多角色情感思路特别致谢 类脑社区 cnfh1746_06138 & kikukiku0662”；③ 保留原版权声明。
- * 4. 严禁利用本脚本从事违法犯罪行为，使用者需自行承担法律责任。
+ * [ ORIGINAL WORK ATTRIBUTION / 原作致谢 ]
+ * This script is a derivative work heavily based on the "SillyTavern TTS Player".
+ * 本脚本是基于“SillyTavern 酒馆TTS播放器”进行的通用化重构作品。
  *
- * User Guidelines
- * ---------------
- * 1. You are granted only the right to use this script for non-commercial purposes.
- * 2. You shall bear all risks associated with the use of this script. The copyright owner makes no warranties regarding compatibility or stability.
- * 3. The copyright owner reserves the right to pursue legal action against any violation.
- *For the full Copyright Notice & User Guidelines, please visit: https://github.com/JiangChSh1995/tm-tts-multirole
+ * The Core Copyright Holders (Original Code Authors) are:
+ * 核心代码版权所有者（原作者）：
+ * - cnfh1746_06138 (Core Logic & Architecture / 核心逻辑与架构)
+ * - kikukiku0662 (GAL Mode & Emotion Engine / GAL模式与情感引擎)
  *
- * 用户须知
- * --------
- * 1. 您仅获得本脚本的非商业性使用权限，无权转让或商业化利用。
- * 2. 您应自行承担使用本脚本的风险，版权人不对稳定性做担保。
- * 3. 对于违反本声明的行为，版权人保留追究法律责任的权利。
- * 4.完整版用户须知以及版权声明请访问: https://github.com/JiangChSh1995/tm-tts-multirole
+ * [ CREDIT STATEMENT / 归属声明 ]
+ * 1. The original logic (including GalStreamingPlayer, audio caching, and emotion detection) belongs to cnfh1746_06138 & kikukiku0662.
+ * 原有的核心逻辑（包括流式播放器、音频缓存、情感检测等）归 cnfh1746_06138 & kikukiku0662 所有。
  *
+ * 2. The universal adaptations, UI modifications, and configuration refactoring are provided by JChSh.
+ * 网页通用化适配、UI 调整及配置重构工作由 JChSh 提供。
+ *
+ * [ LICENSE / 许可协议 ]
+ * Redistribution and use of this script, with or without modification, are permitted provided that:
+ * - This entire copyright notice and attribution list remain intact.
+ * - You do not claim the original code as your own exclusive work.
+ *
+ * 允许分发和修改本脚本，但必须满足：
+ * - 保留完整的版权声明和作者名单。
+ * - 不得将原作代码声称为自己的独家作品。
  * =============================
  */
 
